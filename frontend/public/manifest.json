@@ -1,0 +1,16 @@
+{
+  "short_name": "EchoTalk",
+  "name": "EchoTalk - Anonymous Random Video Chat",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": ".",
+  "background_color": "#0b0c10",
+  "theme_color": "#aa3bff",
+  "display": "standalone",
+  "orientation": "portrait"
+}

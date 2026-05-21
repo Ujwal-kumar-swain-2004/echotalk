@@ -1,0 +1,80 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: echotalk-postgres
+    environment:
+      POSTGRES_DB: echotalk
+      POSTGRES_USER: echotalk
+      POSTGRES_PASSWORD: echotalk_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - echotalk-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echotalk"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: echotalk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - echotalk-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: echotalk-backend
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/echotalk
+      SPRING_DATASOURCE_USERNAME: echotalk
+      SPRING_DATASOURCE_PASSWORD: echotalk_secret
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: echotalk-super-secret-jwt-key-change-in-production-2024
+      SOCKETIO_PORT: 8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - echotalk-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: echotalk-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - echotalk-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  echotalk-net:
+    driver: bridge
