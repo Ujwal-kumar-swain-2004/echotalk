@@ -1,5 +1,9 @@
 package com.echotalk.service;
 
+import com.echotalk.exception.DuplicateUsernameException;
+import com.echotalk.exception.DuplicateEmailException;
+import com.echotalk.exception.InvalidCredentialsException;
+import com.echotalk.exception.UserBannedException;
 import com.echotalk.dto.AuthDto;
 import com.echotalk.entity.Interest;
 import com.echotalk.entity.User;
@@ -25,10 +29,10 @@ public class AuthService {
     @Transactional
     public AuthDto.AuthResponse registerUser(AuthDto.RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username already taken");
+            throw new DuplicateUsernameException("Username already taken");
         }
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new DuplicateEmailException("Email already registered");
         }
 
         User user = User.builder()
@@ -46,14 +50,14 @@ public class AuthService {
 
     public AuthDto.AuthResponse loginUser(AuthDto.LoginRequest request) {
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid credentials"));
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new InvalidCredentialsException("Invalid credentials");
         }
 
         if (user.isBanned()) {
-            throw new RuntimeException("Account is banned");
+            throw new UserBannedException("Account is banned");
         }
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole().name());

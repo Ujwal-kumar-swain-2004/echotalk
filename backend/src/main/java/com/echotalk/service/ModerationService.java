@@ -1,5 +1,8 @@
 package com.echotalk.service;
 
+import com.echotalk.exception.BanNotFoundException;
+import com.echotalk.exception.ReportNotFoundException;
+import com.echotalk.exception.UserNotFoundException;
 import com.echotalk.entity.Ban;
 import com.echotalk.entity.Report;
 import com.echotalk.entity.User;
@@ -52,7 +55,7 @@ public class ModerationService {
     @Transactional
     public Report updateReportStatus(String reportId, String status) {
         Report report = reportRepository.findById(UUID.fromString(reportId))
-                .orElseThrow(() -> new RuntimeException("Report not found"));
+                .orElseThrow(() -> new ReportNotFoundException("Report not found"));
         report.setStatus(Report.Status.valueOf(status.toUpperCase()));
         return reportRepository.save(report);
     }
@@ -60,7 +63,7 @@ public class ModerationService {
     @Transactional
     public Ban banUser(String userId, String reason, String bannedById, Long durationHours) {
         User user = userRepository.findById(UUID.fromString(userId))
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
         user.setBanned(true);
         userRepository.save(user);
 
@@ -78,9 +81,9 @@ public class ModerationService {
     @Transactional
     public void unbanUser(String banId) {
         Ban ban = banRepository.findById(UUID.fromString(banId))
-                .orElseThrow(() -> new RuntimeException("Ban not found"));
+                .orElseThrow(() -> new BanNotFoundException("Ban not found"));
         User user = userRepository.findById(ban.getUserId())
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
         user.setBanned(false);
         userRepository.save(user);
         banRepository.delete(ban);
