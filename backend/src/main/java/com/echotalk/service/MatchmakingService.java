@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -19,14 +20,20 @@ public class MatchmakingService {
     private static final String USER_INTERESTS_KEY = "matchmaking:user:interests:";
     private static final String ACTIVE_MATCH_KEY = "matchmaking:active:";
 
+    // TTL constants to prevent stale data accumulation
+    private static final Duration QUEUE_METADATA_TTL = Duration.ofMinutes(10);
+    private static final Duration ACTIVE_MATCH_TTL = Duration.ofHours(2);
+
     /**
      * Add user to matchmaking queue with gender preference
      */
     public void addToQueue(String userId, String gender, String preferredGender, List<String> interests) {
-        // Store user metadata
-        redisTemplate.opsForValue().set(USER_GENDER_KEY + userId, gender);
+        // Store user metadata with TTL
+        redisTemplate.opsForValue().set(USER_GENDER_KEY + userId, gender, QUEUE_METADATA_TTL);
         if (interests != null && !interests.isEmpty()) {
-            redisTemplate.opsForSet().add(USER_INTERESTS_KEY + userId, interests.toArray(new String[0]));
+            String interestsKey = USER_INTERESTS_KEY + userId;
+            redisTemplate.opsForSet().add(interestsKey, interests.toArray(new String[0]));
+            redisTemplate.expire(interestsKey, QUEUE_METADATA_TTL);
         }
 
         // Add to queue based on gender
@@ -94,10 +101,10 @@ public class MatchmakingService {
     }
 
     /**
-     * Set active match between two users
+     * Set active match between two users with TTL to prevent ghost matches
      */
     public void setActiveMatch(String userId, String partnerId) {
-        redisTemplate.opsForValue().set(ACTIVE_MATCH_KEY + userId, partnerId);
+        redisTemplate.opsForValue().set(ACTIVE_MATCH_KEY + userId, partnerId, ACTIVE_MATCH_TTL);
     }
 
     /**

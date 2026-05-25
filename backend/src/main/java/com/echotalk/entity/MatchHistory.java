@@ -8,7 +8,11 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "match_history")
+@Table(name = "match_history", indexes = {
+        @Index(name = "idx_match_user1", columnList = "user1Id"),
+        @Index(name = "idx_match_user2", columnList = "user2Id"),
+        @Index(name = "idx_match_matched_at", columnList = "matchedAt")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class MatchHistory {
 

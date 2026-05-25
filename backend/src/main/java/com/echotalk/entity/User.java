@@ -10,7 +10,12 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        @Index(name = "idx_user_username", columnList = "username", unique = true),
+        @Index(name = "idx_user_email", columnList = "email", unique = true),
+        @Index(name = "idx_user_role", columnList = "role"),
+        @Index(name = "idx_user_banned", columnList = "banned")
+})
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 
