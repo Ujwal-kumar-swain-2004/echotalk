@@ -117,7 +117,7 @@ export const LandingPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Card 4 */}
+     
         <div className="p-6 rounded-2xl glass-card hover:border-white/10 transition-all duration-300">
           <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5">
             <Video className="w-6 h-6" />

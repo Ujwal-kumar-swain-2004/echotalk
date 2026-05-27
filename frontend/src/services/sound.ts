@@ -33,8 +33,7 @@ class SoundService {
       
       osc1.connect(gain1);
       gain1.connect(this.ctx.destination);
-      
-      // Node 2: Second Note (E5) after 100ms
+ 
       const osc2 = this.ctx.createOscillator();
       const gain2 = this.ctx.createGain();
       osc2.type = 'sine';
@@ -57,7 +56,7 @@ class SoundService {
     }
   }
 
-  // A soft modern pop sound when a message is received
+
   playMessageReceived() {
     try {
       this.init();
@@ -87,7 +86,7 @@ class SoundService {
     }
   }
 
-  // A subtle descending slide when chat ends or peer skips
+ 
   playDisconnect() {
     try {
       this.init();
