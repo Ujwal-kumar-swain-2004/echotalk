@@ -73,9 +73,10 @@ sequenceDiagram
    ```
 
 4. **Access the application:**
-   - Frontend: `http://localhost:5173`
-   - Backend API: `http://localhost:8080`
-   - Swagger Documentation: `http://localhost:8080/swagger-ui.html`
+   - Frontend: `http://localhost:5180`
+   - Backend API: `http://localhost:8180`
+   - Swagger Documentation: `http://localhost:8180/swagger-ui.html`
+   - Local email inbox: `http://localhost:8025`
 
 ### Manual Setup
 
