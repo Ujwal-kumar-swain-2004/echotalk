@@ -12,6 +12,8 @@ import com.echotalk.service.MatchmakingService;
 import com.echotalk.service.ModerationService;
 import com.echotalk.service.OnlineUserService;
 import com.echotalk.service.UserBlockService;
+import com.echotalk.service.PrivateRoomService;
+import com.echotalk.service.TranslationService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
@@ -34,6 +36,8 @@ public class SocketIOEventHandler {
     private final OnlineUserService onlineUserService;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserBlockService userBlockService;
+    private final PrivateRoomService privateRoomService;
+    private final TranslationService translationService;
 
     // Map: sessionId -> userId
     private final Map<UUID, String> sessionUserMap = new ConcurrentHashMap<>();
@@ -41,6 +45,8 @@ public class SocketIOEventHandler {
     private final Map<String, UUID> userSessionMap = new ConcurrentHashMap<>();
     // Map: userId -> chatRoomId
     private final Map<String, String> userChatRoomMap = new ConcurrentHashMap<>();
+    private final Map<String, String> userLanguageMap = new ConcurrentHashMap<>();
+    private final Map<String, String> privateRoomWaitingMap = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void start() {
@@ -57,6 +63,8 @@ public class SocketIOEventHandler {
         server.addEventListener("message", MessageData.class, onMessage());
         server.addEventListener("reportUser", ReportData.class, onReportUser());
         server.addEventListener("blockUser", Object.class, onBlockUser());
+        server.addEventListener("setLanguage", LanguageData.class, onSetLanguage());
+        server.addEventListener("joinPrivateRoom", PrivateRoomData.class, onJoinPrivateRoom());
 
         server.start();
         log.info("Socket.IO server started on port {}", server.getConfiguration().getPort());
@@ -110,6 +118,8 @@ public class SocketIOEventHandler {
 
                 // Remove from queue
                 matchmakingService.removeFromAllQueues(userId);
+                userLanguageMap.remove(userId);
+                privateRoomWaitingMap.values().removeIf(userId::equals);
 
                 broadcastOnlineCount();
                 log.info("Client disconnected: {} (user: {})", client.getSessionId(), userId);
@@ -146,11 +156,13 @@ public class SocketIOEventHandler {
                 Map<String, Object> matchData = new HashMap<>();
                 matchData.put("roomId", roomId);
                 matchData.put("isInitiator", true);
+                matchData.put("peerId", matchedUserId);
                 sendToUser(userId, "matchFound", matchData);
 
                 Map<String, Object> matchData2 = new HashMap<>();
                 matchData2.put("roomId", roomId);
                 matchData2.put("isInitiator", false);
+                matchData2.put("peerId", userId);
                 sendToUser(matchedUserId, "matchFound", matchData2);
 
                 log.info("Match found immediately: {} <-> {} in room {}", userId, matchedUserId, roomId);
@@ -262,6 +274,10 @@ public class SocketIOEventHandler {
                 // Relay to partner
                 Map<String, Object> msgData = new HashMap<>();
                 msgData.put("content", data.getContent());
+                msgData.put("translatedContent", translationService.translate(
+                        data.getContent(),
+                        userLanguageMap.getOrDefault(partnerId, "original")
+                ));
                 msgData.put("senderId", userId);
                 msgData.put("timestamp", System.currentTimeMillis());
                 sendToUser(partnerId, "message", msgData);
@@ -300,6 +316,49 @@ public class SocketIOEventHandler {
             }
             sendToUser(partnerId, "chatEnded", Map.of("reason", "Partner ended chat"));
             client.sendEvent("userBlocked", Map.of("message", "User blocked"));
+        };
+    }
+
+    private DataListener<LanguageData> onSetLanguage() {
+        return (client, data, ackSender) -> {
+            String userId = sessionUserMap.get(client.getSessionId());
+            if (userId != null && data.getLanguage() != null) {
+                userLanguageMap.put(userId, data.getLanguage());
+            }
+        };
+    }
+
+    private DataListener<PrivateRoomData> onJoinPrivateRoom() {
+        return (client, data, ackSender) -> {
+            String userId = sessionUserMap.get(client.getSessionId());
+            if (userId == null || data.getCode() == null) return;
+            String code = data.getCode().trim().toUpperCase();
+            try {
+                if (!privateRoomService.canJoin(code, userId)) {
+                    client.sendEvent("error", Map.of("message", "You are not a member of this private room"));
+                    return;
+                }
+                String waitingUser = privateRoomWaitingMap.putIfAbsent(code, userId);
+                if (waitingUser == null || waitingUser.equals(userId)) {
+                    client.sendEvent("waitingForMatch", Map.of("privateRoom", code));
+                    return;
+                }
+                privateRoomWaitingMap.remove(code);
+                matchmakingService.setActiveMatch(userId, waitingUser);
+                matchmakingService.setActiveMatch(waitingUser, userId);
+                ChatRoom room = chatService.createChatRoom(userId, waitingUser);
+                String roomId = room.getId().toString();
+                userChatRoomMap.put(userId, roomId);
+                userChatRoomMap.put(waitingUser, roomId);
+                sendToUser(userId, "matchFound", Map.of(
+                        "roomId", roomId, "isInitiator", true, "peerId", waitingUser
+                ));
+                sendToUser(waitingUser, "matchFound", Map.of(
+                        "roomId", roomId, "isInitiator", false, "peerId", userId
+                ));
+            } catch (IllegalArgumentException exception) {
+                client.sendEvent("error", Map.of("message", exception.getMessage()));
+            }
         };
     }
 
@@ -352,5 +411,15 @@ public class SocketIOEventHandler {
     @Data
     public static class ReportData {
         private String reason;
+    }
+
+    @Data
+    public static class LanguageData {
+        private String language;
+    }
+
+    @Data
+    public static class PrivateRoomData {
+        private String code;
     }
 }

@@ -50,7 +50,7 @@ class SocketService {
     if (this.socket && this.socket.connected) {
       this.socket.emit(event, data);
     } else {
-      console.warn(`Socket not connected. Cannot emit: ${event}`);
+      this.socket?.once('connect', () => this.socket?.emit(event, data));
     }
   }
 

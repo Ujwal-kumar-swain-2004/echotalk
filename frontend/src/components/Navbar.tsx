@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useMatchStore } from '../store/matchStore';
-import { Video, Shield, Settings, LogOut } from 'lucide-react';
+import { Video, Shield, Settings, LogOut, Users } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, logout, isAuthenticated } = useAuthStore();
@@ -77,6 +77,19 @@ export const Navbar: React.FC = () => {
             >
               <Settings className="w-4.5 h-4.5" />
               <span className="hidden md:inline">Settings</span>
+            </Link>
+
+            <Link
+              to="/social"
+              className={`p-2.5 rounded-xl transition-all duration-200 flex items-center gap-2 text-sm font-medium ${
+                isActive('/social')
+                  ? 'bg-accent/20 text-accent border border-accent/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              }`}
+              title="Friends and private rooms"
+            >
+              <Users className="w-4.5 h-4.5" />
+              <span className="hidden md:inline">Social</span>
             </Link>
 
             <div className="h-6 w-[1px] bg-white/10 mx-1"></div>

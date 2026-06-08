@@ -4,6 +4,7 @@ export interface ChatMessage {
   senderId: string;
   content: string;
   timestamp: number;
+  translatedContent?: string;
 }
 
 interface ChatState {

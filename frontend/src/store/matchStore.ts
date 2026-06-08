@@ -9,6 +9,7 @@ interface MatchState {
   isMatched: boolean;
   currentRoomId: string | null;
   isInitiator: boolean;
+  peerUserId: string | null;
   error: string | null;
   queueStatus: 'idle' | 'searching' | 'matched';
 
@@ -17,7 +18,7 @@ interface MatchState {
   setInterests: (interests: string[]) => void;
   setOnlineCount: (count: number) => void;
   startSearch: () => void;
-  setMatched: (roomId: string, isInitiator: boolean) => void;
+  setMatched: (roomId: string, isInitiator: boolean, peerUserId?: string | null) => void;
   stopSearch: () => void;
   resetMatch: () => void;
   setError: (error: string | null) => void;
@@ -32,6 +33,7 @@ export const useMatchStore = create<MatchState>((set) => ({
   isMatched: false,
   currentRoomId: null,
   isInitiator: false,
+  peerUserId: null,
   error: null,
   queueStatus: 'idle',
 
@@ -61,11 +63,12 @@ export const useMatchStore = create<MatchState>((set) => ({
     error: null 
   }),
 
-  setMatched: (currentRoomId, isInitiator) => set({ 
+  setMatched: (currentRoomId, isInitiator, peerUserId = null) => set({
     isSearching: false, 
     isMatched: true, 
     currentRoomId, 
     isInitiator,
+    peerUserId,
     queueStatus: 'matched' 
   }),
 
@@ -74,6 +77,7 @@ export const useMatchStore = create<MatchState>((set) => ({
     isMatched: false, 
     currentRoomId: null, 
     isInitiator: false,
+    peerUserId: null,
     queueStatus: 'idle' 
   }),
 
@@ -81,6 +85,7 @@ export const useMatchStore = create<MatchState>((set) => ({
     isMatched: false, 
     currentRoomId: null, 
     isInitiator: false,
+    peerUserId: null,
     queueStatus: 'idle' 
   }),
 

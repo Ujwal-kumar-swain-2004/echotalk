@@ -6,9 +6,11 @@ import { useAuthStore } from '../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, SkipForward, Power, AlertTriangle,
   Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban,
-  Wifi, WifiOff, RefreshCw, SlidersHorizontal, Bell, PictureInPicture
+  Wifi, WifiOff, RefreshCw, SlidersHorizontal, Bell, PictureInPicture, UserPlus, Languages
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
+import api from '../services/api';
 
 export const VideoChat: React.FC = () => {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -17,13 +19,16 @@ export const VideoChat: React.FC = () => {
 
   const { user } = useAuthStore();
   const { messages, isPeerTyping } = useChatStore();
-  const { interests, error, setError } = useMatchStore();
+  const { interests, error, setError, peerUserId } = useMatchStore();
+  const [searchParams] = useSearchParams();
+  const privateRoomStarted = useRef(false);
 
   const {
     isMuted, isVideoOff, connectionStatus, isSearching, isMatched, networkQuality,
     isSocketReconnecting, cameras, microphones, notificationsEnabled,
     startMatchmaking, skipToNext, endChat, toggleMute, toggleCamera,
-    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser, enableNotifications
+    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser, enableNotifications,
+    setTranslationLanguage, startPrivateRoom
   } = useWebRTC(localVideoRef, remoteVideoRef);
 
   const [messageInput, setMessageInput] = useState('');
@@ -31,6 +36,20 @@ export const VideoChat: React.FC = () => {
   const [reportReason, setReportReason] = useState('Inappropriate Content');
   const [reportSuccess, setReportSuccess] = useState(false);
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  const [translationLanguage, setTranslationLanguageState] = useState('original');
+  const [friendRequested, setFriendRequested] = useState(false);
+
+  useEffect(() => {
+    const roomCode = searchParams.get('room');
+    if (roomCode && !privateRoomStarted.current) {
+      privateRoomStarted.current = true;
+      startPrivateRoom(roomCode);
+    }
+  }, [searchParams, startPrivateRoom]);
+
+  useEffect(() => {
+    setFriendRequested(false);
+  }, [peerUserId]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,6 +72,12 @@ export const VideoChat: React.FC = () => {
       setReportSuccess(false);
       skipToNext();
     }, 1500);
+  };
+
+  const requestFriend = async () => {
+    if (!peerUserId) return;
+    await api.post(`/social/friends/${peerUserId}`);
+    setFriendRequested(true);
   };
 
   const isConnected = connectionStatus === 'connected';
@@ -323,6 +348,11 @@ export const VideoChat: React.FC = () => {
           </div>
           {isMatched && (
             <div className="flex items-center gap-2">
+              <button onClick={requestFriend} disabled={friendRequested} title="Send friend request"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-emerald-400 disabled:text-emerald-500 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <UserPlus className="w-4 h-4" />
+              </button>
               <button onClick={blockUser} title="Block stranger"
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
                 style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -377,7 +407,10 @@ export const VideoChat: React.FC = () => {
                       }`} style={isSelf
                         ? { background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 16px rgba(124,58,237,0.25)' }
                         : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                      {msg.content}
+                      {msg.translatedContent || msg.content}
+                      {msg.translatedContent && msg.translatedContent !== msg.content && (
+                        <span className="block mt-1 text-[10px] opacity-50">{msg.content}</span>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -414,6 +447,22 @@ export const VideoChat: React.FC = () => {
 
         {/* Message Input */}
         <div className="p-4 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <label className="mb-2 flex items-center gap-2 text-[11px] text-gray-500">
+            <Languages className="w-3.5 h-3.5" />
+            Translate incoming messages
+            <select value={translationLanguage} onChange={event => {
+              setTranslationLanguageState(event.target.value);
+              setTranslationLanguage(event.target.value);
+            }} className="ml-auto bg-[#151522] border border-white/10 rounded-lg px-2 py-1 text-gray-300">
+              <option value="original">Original</option>
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="ja">Japanese</option>
+            </select>
+          </label>
           <form onSubmit={handleSend} className="flex gap-2.5 items-center">
             <input type="text" value={messageInput}
               onChange={e => setMessageInput(e.target.value)}

@@ -125,10 +125,10 @@ export const useWebRTC = (
       console.log('Waiting for a match...');
     });
 
-    socketService.on('matchFound', async (data: { roomId: string; isInitiator: boolean }) => {
+    socketService.on('matchFound', async (data: { roomId: string; isInitiator: boolean; peerId?: string }) => {
       console.log('Match found! Room ID:', data.roomId, 'Is Initiator:', data.isInitiator);
       soundService.playMatchFound();
-      setMatched(data.roomId, data.isInitiator);
+      setMatched(data.roomId, data.isInitiator, data.peerId);
       setConnectionStatus('connecting');
       clearMessages();
       if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
@@ -196,7 +196,7 @@ export const useWebRTC = (
       }
     });
 
-    socketService.on('message', (data: { content: string; senderId: string; timestamp: number }) => {
+    socketService.on('message', (data: { content: string; translatedContent?: string; senderId: string; timestamp: number }) => {
       soundService.playMessageReceived();
       addMessage(data);
     });
@@ -365,6 +365,17 @@ export const useWebRTC = (
     if (permission !== 'granted') setError('Notification permission was not granted.');
   };
 
+  const setTranslationLanguage = (language: string) => {
+    socketService.emit('setLanguage', { language });
+  };
+
+  const startPrivateRoom = (code: string) => {
+    clearMessages();
+    startSearch();
+    setConnectionStatus('searching');
+    socketService.emit('joinPrivateRoom', { code });
+  };
+
   return {
     localStream,
     remoteStream,
@@ -389,6 +400,8 @@ export const useWebRTC = (
     sendTyping,
     reportUser,
     blockUser
-    ,enableNotifications
+    ,enableNotifications,
+    setTranslationLanguage,
+    startPrivateRoom
   };
 };
