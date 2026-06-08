@@ -1,0 +1,19 @@
+FROM eclipse-temurin:21-jdk-alpine AS build
+WORKDIR /app
+COPY pom.xml .
+COPY src ./src
+RUN apk add --no-cache maven && mvn clean package -DskipTests
+
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+RUN apk add --no-cache nginx gettext
+COPY --from=build /app/target/*.jar app.jar
+COPY deploy ./deploy
+RUN chmod +x /app/deploy/render-entrypoint.sh
+
+ENV PORT=10000
+ENV SERVER_PORT=8080
+ENV SOCKETIO_PORT=8081
+EXPOSE 10000
+
+ENTRYPOINT ["/app/deploy/render-entrypoint.sh"]
