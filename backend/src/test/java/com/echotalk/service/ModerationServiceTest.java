@@ -59,7 +59,7 @@ class ModerationServiceTest {
         testUser = User.builder()
                 .id(userId)
                 .username("testuser")
-                .isBanned(false)
+                .banned(false)
                 .build();
 
         testReport = Report.builder()
@@ -104,9 +104,9 @@ class ModerationServiceTest {
         when(reportRepository.findById(reportId)).thenReturn(Optional.of(testReport));
         when(reportRepository.save(any(Report.class))).thenReturn(testReport);
 
-        Report updated = moderationService.updateReportStatus(reportId.toString(), "RESOLVED");
+        Report updated = moderationService.updateReportStatus(reportId.toString(), "REVIEWED");
 
-        assertEquals(Report.Status.RESOLVED, updated.getStatus());
+        assertEquals(Report.Status.REVIEWED, updated.getStatus());
         verify(reportRepository).save(testReport);
     }
 
@@ -114,7 +114,7 @@ class ModerationServiceTest {
     void updateReportStatus_ReportNotFound_ThrowsException() {
         when(reportRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
 
-        assertThrows(ReportNotFoundException.class, () -> moderationService.updateReportStatus(UUID.randomUUID().toString(), "RESOLVED"));
+        assertThrows(ReportNotFoundException.class, () -> moderationService.updateReportStatus(UUID.randomUUID().toString(), "REVIEWED"));
     }
 
     @Test
