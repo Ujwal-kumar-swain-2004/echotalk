@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
+import { usePageHostname } from '../services/runtimeUrl';
 
 interface User {
   id: string;
@@ -24,7 +25,7 @@ interface AuthState {
   clearError: () => void;
 }
 
-const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080/api'}/auth`;
+const API_URL = `${usePageHostname(import.meta.env.VITE_API_URL || 'http://localhost:8080/api')}/auth`;
 
 export const useAuthStore = create<AuthState>((set) => ({
   token: localStorage.getItem('token'),
