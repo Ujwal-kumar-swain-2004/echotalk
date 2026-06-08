@@ -88,6 +88,42 @@ sequenceDiagram
 
 ### Manual Setup
 
+### Render Deployment
+
+The repository includes a Render Blueprint at `render.yaml`. The Render
+container exposes one public nginx port and proxies:
+
+- `/api/*` to the internal Spring Boot server on port `8080`
+- `/socket.io/*` to the internal Socket.IO server on port `8081`
+
+Create the service from the Blueprint and provide these secret values in
+Render:
+
+```text
+SPRING_DATASOURCE_URL
+SPRING_DATASOURCE_USERNAME
+SPRING_DATASOURCE_PASSWORD
+SPRING_DATA_REDIS_HOST
+SPRING_DATA_REDIS_PASSWORD
+APP_CORS_ALLOWED_ORIGINS
+FRONTEND_URL
+MAIL_HOST
+MAIL_USERNAME
+MAIL_PASSWORD
+```
+
+Use the Neon JDBC URL for PostgreSQL and the Upstash TCP host/password for
+Redis. Upstash connections use username `default`, port `6379`, and TLS.
+Mailpit is only part of local Docker Compose; Render connects directly to the
+configured production mail provider.
+
+After Render assigns a URL, configure the frontend with:
+
+```text
+VITE_API_URL=https://YOUR-SERVICE.onrender.com/api
+VITE_SOCKET_URL=https://YOUR-SERVICE.onrender.com
+```
+
 1. Start PostgreSQL and Redis locally.
 2. Configure `backend/src/main/resources/application.yml` or export equivalent environment variables.
 3. Run the backend:
