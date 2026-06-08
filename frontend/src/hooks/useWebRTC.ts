@@ -39,6 +39,9 @@ export const useWebRTC = (
   const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    'Notification' in window && Notification.permission === 'granted'
+  );
 
   const rtcManagerRef = useRef<WebRTCManager | null>(null);
 
@@ -128,6 +131,12 @@ export const useWebRTC = (
       setMatched(data.roomId, data.isInitiator);
       setConnectionStatus('connecting');
       clearMessages();
+      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        new Notification('EchoTalk match found', {
+          body: 'Your video chat is ready.',
+          icon: '/favicon.svg'
+        });
+      }
 
       if (rtcManagerRef.current) {
         rtcManagerRef.current.createPeerConnection();
@@ -346,6 +355,16 @@ export const useWebRTC = (
     handlePeerDisconnect();
   };
 
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) {
+      setError('Notifications are not supported by this browser.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationsEnabled(permission === 'granted');
+    if (permission !== 'granted') setError('Notification permission was not granted.');
+  };
+
   return {
     localStream,
     remoteStream,
@@ -358,6 +377,7 @@ export const useWebRTC = (
     isSocketReconnecting,
     cameras,
     microphones,
+    notificationsEnabled,
     startMatchmaking,
     skipToNext,
     endChat,
@@ -369,5 +389,6 @@ export const useWebRTC = (
     sendTyping,
     reportUser,
     blockUser
+    ,enableNotifications
   };
 };

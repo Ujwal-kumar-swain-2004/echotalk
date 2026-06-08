@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, SkipForward, Power, AlertTriangle,
   Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban,
-  Wifi, WifiOff, RefreshCw, SlidersHorizontal
+  Wifi, WifiOff, RefreshCw, SlidersHorizontal, Bell, PictureInPicture
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,9 +21,9 @@ export const VideoChat: React.FC = () => {
 
   const {
     isMuted, isVideoOff, connectionStatus, isSearching, isMatched, networkQuality,
-    isSocketReconnecting, cameras, microphones,
+    isSocketReconnecting, cameras, microphones, notificationsEnabled,
     startMatchmaking, skipToNext, endChat, toggleMute, toggleCamera,
-    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser
+    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser, enableNotifications
   } = useWebRTC(localVideoRef, remoteVideoRef);
 
   const [messageInput, setMessageInput] = useState('');
@@ -56,6 +56,23 @@ export const VideoChat: React.FC = () => {
   };
 
   const isConnected = connectionStatus === 'connected';
+
+  const openPictureInPicture = async () => {
+    const video = remoteVideoRef.current;
+    if (!video || !document.pictureInPictureEnabled) {
+      setError('Picture-in-picture is not supported by this browser.');
+      return;
+    }
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      setError('Unable to open picture-in-picture.');
+    }
+  };
 
   const renderVideoOverlay = () => {
     switch (connectionStatus) {
@@ -222,6 +239,9 @@ export const VideoChat: React.FC = () => {
               <RefreshCw className="w-4.5 h-4.5" />
               <span className="hidden sm:inline text-xs font-medium">Flip</span>
             </ToolbarBtn>
+            <ToolbarBtn active={notificationsEnabled} onClick={enableNotifications} title="Enable match notifications">
+              <Bell className="w-4.5 h-4.5" />
+            </ToolbarBtn>
           </div>
 
           {/* Center: status indicator */}
@@ -235,6 +255,10 @@ export const VideoChat: React.FC = () => {
 
           {/* Right: next + stop */}
           <div className="flex items-center gap-2">
+            <ToolbarBtn active={false} onClick={openPictureInPicture} disabled={!isConnected} title="Picture in picture">
+              <PictureInPicture className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">PiP</span>
+            </ToolbarBtn>
             <ToolbarBtn active={false} onClick={skipToNext} disabled={!isSearching && !isMatched} title="Next stranger">
               <SkipForward className="w-4.5 h-4.5 text-violet-400" />
               <span className="text-xs font-medium">Next</span>
