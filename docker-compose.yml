@@ -8,8 +8,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-echotalk}
       POSTGRES_USER: ${POSTGRES_USER:-echotalk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echotalk_secret}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -23,8 +21,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: echotalk-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -61,8 +57,8 @@ services:
       dockerfile: Dockerfile
     container_name: echotalk-backend
     ports:
-      - "8080:8080"
-      - "8081:8081"
+      - "8180:8080"
+      - "8181:8081"
     environment:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/echotalk}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-echotalk}
@@ -84,14 +80,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
-        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:8081}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8180/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:8181}
         VITE_TURN_URLS: ${VITE_TURN_URLS:-turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp}
         VITE_TURN_USERNAME: ${TURN_USERNAME:-echotalk}
         VITE_TURN_CREDENTIAL: ${TURN_CREDENTIAL:-change-this-turn-password}
     container_name: echotalk-frontend
     ports:
-      - "5173:80"
+      - "5180:80"
     depends_on:
       - backend
       - turn
