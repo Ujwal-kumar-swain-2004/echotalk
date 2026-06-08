@@ -1,7 +1,9 @@
 import { io, Socket } from 'socket.io-client';
-import { usePageHostname } from './runtimeUrl';
+import { currentOrigin, usePageHostname } from './runtimeUrl';
 
-const SOCKET_URL = usePageHostname(import.meta.env.VITE_SOCKET_URL || 'http://localhost:8081');
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL
+  ? usePageHostname(import.meta.env.VITE_SOCKET_URL)
+  : currentOrigin('http://localhost:8081');
 
 class SocketService {
   private socket: Socket | null = null;

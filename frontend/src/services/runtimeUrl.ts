@@ -1,6 +1,10 @@
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 export function usePageHostname(configuredUrl: string): string {
+  if (configuredUrl.startsWith('/')) {
+    return configuredUrl;
+  }
+
   if (typeof window === 'undefined' || LOOPBACK_HOSTS.has(window.location.hostname)) {
     return configuredUrl;
   }
@@ -19,4 +23,8 @@ export function usePageHostname(configuredUrl: string): string {
     /(^[a-z]+:)(localhost|127\.0\.0\.1|\[::1\])/i,
     `$1${window.location.hostname}`,
   );
+}
+
+export function currentOrigin(fallback: string): string {
+  return typeof window === 'undefined' ? fallback : window.location.origin;
 }
