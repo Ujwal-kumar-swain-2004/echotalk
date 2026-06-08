@@ -5,7 +5,7 @@ import { useMatchStore } from '../store/matchStore';
 import { useAuthStore } from '../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, SkipForward, Power, AlertTriangle,
-  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall
+  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,7 +21,7 @@ export const VideoChat: React.FC = () => {
   const {
     isMuted, isVideoOff, connectionStatus, isSearching, isMatched,
     startMatchmaking, skipToNext, endChat, toggleMute, toggleCamera,
-    sendMessage, sendTyping, reportUser
+    sendMessage, sendTyping, reportUser, blockUser
   } = useWebRTC(localVideoRef, remoteVideoRef);
 
   const [messageInput, setMessageInput] = useState('');
@@ -259,11 +259,18 @@ export const VideoChat: React.FC = () => {
             </div>
           </div>
           {isMatched && (
-            <button onClick={() => setReportOpen(true)} title="Report stranger"
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
-              style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-              <AlertTriangle className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={blockUser} title="Block stranger"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <Ban className="w-4 h-4" />
+              </button>
+              <button onClick={() => setReportOpen(true)} title="Report stranger"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <AlertTriangle className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
 

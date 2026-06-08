@@ -11,6 +11,7 @@ import com.echotalk.service.ChatService;
 import com.echotalk.service.MatchmakingService;
 import com.echotalk.service.ModerationService;
 import com.echotalk.service.OnlineUserService;
+import com.echotalk.service.UserBlockService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
@@ -32,6 +33,7 @@ public class SocketIOEventHandler {
     private final ModerationService moderationService;
     private final OnlineUserService onlineUserService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserBlockService userBlockService;
 
     // Map: sessionId -> userId
     private final Map<UUID, String> sessionUserMap = new ConcurrentHashMap<>();
@@ -54,6 +56,7 @@ public class SocketIOEventHandler {
         server.addEventListener("typing", Object.class, onTyping());
         server.addEventListener("message", MessageData.class, onMessage());
         server.addEventListener("reportUser", ReportData.class, onReportUser());
+        server.addEventListener("blockUser", Object.class, onBlockUser());
 
         server.start();
         log.info("Socket.IO server started on port {}", server.getConfiguration().getPort());
@@ -278,6 +281,25 @@ public class SocketIOEventHandler {
                 moderationService.createReport(userId, partnerId, chatRoomId, data.getReason());
                 client.sendEvent("reportSubmitted", Map.of("message", "Report submitted successfully"));
             }
+        };
+    }
+
+    private DataListener<Object> onBlockUser() {
+        return (client, data, ackSender) -> {
+            String userId = sessionUserMap.get(client.getSessionId());
+            if (userId == null) return;
+            String partnerId = matchmakingService.getActiveMatch(userId);
+            if (partnerId == null) return;
+
+            userBlockService.block(userId, partnerId);
+            matchmakingService.clearActiveMatch(userId);
+            String chatRoomId = userChatRoomMap.remove(userId);
+            if (chatRoomId != null) {
+                chatService.endChatRoom(chatRoomId);
+                userChatRoomMap.remove(partnerId);
+            }
+            sendToUser(partnerId, "chatEnded", Map.of("reason", "Partner ended chat"));
+            client.sendEvent("userBlocked", Map.of("message", "User blocked"));
         };
     }
 

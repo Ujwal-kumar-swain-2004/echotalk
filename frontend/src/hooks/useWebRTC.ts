@@ -272,6 +272,12 @@ export const useWebRTC = (
     socketService.emit('reportUser', { reason });
   };
 
+  const blockUser = () => {
+    if (!currentRoomId) return;
+    socketService.emit('blockUser', {});
+    handlePeerDisconnect();
+  };
+
   return {
     localStream,
     remoteStream,
@@ -287,6 +293,7 @@ export const useWebRTC = (
     toggleCamera,
     sendMessage,
     sendTyping,
-    reportUser
+    reportUser,
+    blockUser
   };
 };
