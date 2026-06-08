@@ -8,7 +8,7 @@ import { Lock, User, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const loginSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
+  username: z.string().trim().min(1, 'Enter your username or email'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
@@ -68,7 +68,7 @@ export const LoginPage: React.FC = () => {
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           <div>
             <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              Username
+              Username or email
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
@@ -77,8 +77,12 @@ export const LoginPage: React.FC = () => {
               <input
                 {...register('username')}
                 type="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="username"
+                inputMode="email"
                 className="block w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all text-sm"
-                placeholder="Enter your username"
+                placeholder="Enter username or email"
               />
             </div>
             {errors.username && (
@@ -97,6 +101,7 @@ export const LoginPage: React.FC = () => {
               <input
                 {...register('password')}
                 type="password"
+                autoComplete="current-password"
                 className="block w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-white placeholder-gray-500 focus:outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all text-sm"
                 placeholder="Enter your password"
               />

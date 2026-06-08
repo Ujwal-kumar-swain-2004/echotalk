@@ -116,7 +116,8 @@ class AuthServiceTest {
 
     @Test
     void loginUser_Success() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(jwtTokenProvider.generateToken(any(), anyString(), anyString())).thenReturn("test.jwt.token");
 
@@ -128,14 +129,16 @@ class AuthServiceTest {
 
     @Test
     void loginUser_UserNotFound_ThrowsException() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.empty());
 
         assertThrows(InvalidCredentialsException.class, () -> authService.loginUser(loginRequest));
     }
 
     @Test
     void loginUser_InvalidPassword_ThrowsException() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
 
         assertThrows(InvalidCredentialsException.class, () -> authService.loginUser(loginRequest));
@@ -144,7 +147,8 @@ class AuthServiceTest {
     @Test
     void loginUser_UserBanned_ThrowsException() {
         testUser.setBanned(true);
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
 
         assertThrows(UserBannedException.class, () -> authService.loginUser(loginRequest));
