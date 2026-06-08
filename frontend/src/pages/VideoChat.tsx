@@ -5,7 +5,8 @@ import { useMatchStore } from '../store/matchStore';
 import { useAuthStore } from '../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, SkipForward, Power, AlertTriangle,
-  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban
+  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban,
+  Wifi, WifiOff, RefreshCw, SlidersHorizontal
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -19,15 +20,17 @@ export const VideoChat: React.FC = () => {
   const { interests, error, setError } = useMatchStore();
 
   const {
-    isMuted, isVideoOff, connectionStatus, isSearching, isMatched,
+    isMuted, isVideoOff, connectionStatus, isSearching, isMatched, networkQuality,
+    isSocketReconnecting, cameras, microphones,
     startMatchmaking, skipToNext, endChat, toggleMute, toggleCamera,
-    sendMessage, sendTyping, reportUser, blockUser
+    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser
   } = useWebRTC(localVideoRef, remoteVideoRef);
 
   const [messageInput, setMessageInput] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState('Inappropriate Content');
   const [reportSuccess, setReportSuccess] = useState(false);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -211,14 +214,22 @@ export const VideoChat: React.FC = () => {
               {isVideoOff ? <VideoOff className="w-4.5 h-4.5" /> : <Video className="w-4.5 h-4.5" />}
               <span className="text-xs font-medium">{isVideoOff ? 'Start Video' : 'Camera'}</span>
             </ToolbarBtn>
+            <ToolbarBtn active={deviceMenuOpen} onClick={() => setDeviceMenuOpen(value => !value)} title="Audio and video devices">
+              <SlidersHorizontal className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">Devices</span>
+            </ToolbarBtn>
+            <ToolbarBtn active={false} onClick={() => switchCamera()} title="Switch front/rear camera">
+              <RefreshCw className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">Flip</span>
+            </ToolbarBtn>
           </div>
 
           {/* Center: status indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : isSearching ? 'bg-amber-400 animate-pulse' : 'bg-gray-600'}`} />
+            {networkQuality === 'offline' ? <WifiOff className="w-3.5 h-3.5 text-rose-400" /> : <Wifi className="w-3.5 h-3.5 text-emerald-400" />}
             <span className="text-gray-500 font-medium">
-              {isConnected ? 'Connected' : isSearching ? 'Searching...' : 'Idle'}
+              {isSocketReconnecting ? 'Reconnecting...' : isConnected ? `${networkQuality} network` : isSearching ? 'Searching...' : 'Idle'}
             </span>
           </div>
 
@@ -234,6 +245,34 @@ export const VideoChat: React.FC = () => {
             </ToolbarBtn>
           </div>
         </div>
+
+        {deviceMenuOpen && (
+          <div className="shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl"
+            style={{ background: 'rgba(10,10,20,0.96)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <label className="text-xs text-gray-400">
+              Camera
+              <select onChange={event => switchCamera(event.target.value)}
+                className="mt-1.5 w-full rounded-xl px-3 py-2 text-white bg-[#151522] border border-white/10">
+                {cameras.map((camera, index) => (
+                  <option key={camera.deviceId} value={camera.deviceId}>
+                    {camera.label || `Camera ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-gray-400">
+              Microphone
+              <select onChange={event => switchMicrophone(event.target.value)}
+                className="mt-1.5 w-full rounded-xl px-3 py-2 text-white bg-[#151522] border border-white/10">
+                {microphones.map((microphone, index) => (
+                  <option key={microphone.deviceId} value={microphone.deviceId}>
+                    {microphone.label || `Microphone ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ── RIGHT: CHAT PANEL ── */}

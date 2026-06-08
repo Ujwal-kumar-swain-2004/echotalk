@@ -33,6 +33,12 @@ export const useWebRTC = (
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'searching' | 'connecting' | 'connected' | 'disconnected'>('idle');
+  const [networkQuality, setNetworkQuality] = useState<'excellent' | 'good' | 'poor' | 'offline'>(
+    navigator.onLine ? 'good' : 'offline'
+  );
+  const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
 
   const rtcManagerRef = useRef<WebRTCManager | null>(null);
 
@@ -67,6 +73,9 @@ export const useWebRTC = (
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
+        const devices = await rtcManagerRef.current.getMediaDevices();
+        setCameras(devices.cameras);
+        setMicrophones(devices.microphones);
       } catch (err) {
         console.error('Failed to get camera/mic stream:', err);
         setError('Camera and microphone access are required to chat.');
@@ -90,6 +99,22 @@ export const useWebRTC = (
 
     socketService.on('onlineCount', (data: { count: number }) => {
       setOnlineCount(data.count);
+    });
+
+    socketService.on('connect', () => {
+      setIsSocketReconnecting(false);
+      const state = useMatchStore.getState();
+      if (state.isSearching) {
+        socketService.emit('joinQueue', {
+          gender: state.gender,
+          preferredGender: state.preferredGender,
+          interests: state.interests
+        });
+      }
+    });
+
+    socketService.on('disconnect', () => {
+      setIsSocketReconnecting(true);
     });
 
     socketService.on('waitingForMatch', () => {
@@ -192,6 +217,27 @@ export const useWebRTC = (
     };
   }, [user, token]);
 
+  useEffect(() => {
+    const markOnline = () => setNetworkQuality('good');
+    const markOffline = () => setNetworkQuality('offline');
+    window.addEventListener('online', markOnline);
+    window.addEventListener('offline', markOffline);
+    return () => {
+      window.removeEventListener('online', markOnline);
+      window.removeEventListener('offline', markOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+    const interval = window.setInterval(async () => {
+      if (rtcManagerRef.current) {
+        setNetworkQuality(await rtcManagerRef.current.getNetworkQuality());
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [connectionStatus]);
+
   const handlePeerDisconnect = () => {
     soundService.playDisconnect();
     if (rtcManagerRef.current) {
@@ -272,6 +318,28 @@ export const useWebRTC = (
     socketService.emit('reportUser', { reason });
   };
 
+  const switchCamera = async (deviceId?: string) => {
+    if (!rtcManagerRef.current) return;
+    try {
+      const stream = await rtcManagerRef.current.switchVideoInput(deviceId);
+      setLocalStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch {
+      setError('Unable to switch camera on this device.');
+    }
+  };
+
+  const switchMicrophone = async (deviceId: string) => {
+    if (!rtcManagerRef.current) return;
+    try {
+      const stream = await rtcManagerRef.current.switchAudioInput(deviceId);
+      setLocalStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch {
+      setError('Unable to switch microphone.');
+    }
+  };
+
   const blockUser = () => {
     if (!currentRoomId) return;
     socketService.emit('blockUser', {});
@@ -286,11 +354,17 @@ export const useWebRTC = (
     connectionStatus,
     isSearching,
     isMatched,
+    networkQuality,
+    isSocketReconnecting,
+    cameras,
+    microphones,
     startMatchmaking,
     skipToNext,
     endChat,
     toggleMute,
     toggleCamera,
+    switchCamera,
+    switchMicrophone,
     sendMessage,
     sendTyping,
     reportUser,

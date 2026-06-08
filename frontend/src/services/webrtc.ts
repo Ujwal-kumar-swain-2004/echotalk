@@ -24,6 +24,9 @@ export class WebRTCManager {
   private remoteStream: MediaStream | null = null;
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
   private onIceCandidateCallback: ((candidate: RTCIceCandidate) => void) | null = null;
+  private videoDeviceId: string | null = null;
+  private audioDeviceId: string | null = null;
+  private facingMode: 'user' | 'environment' = 'user';
 
   constructor(
     onRemoteStream: (stream: MediaStream) => void,
@@ -72,9 +75,14 @@ export class WebRTCManager {
         video: video ? {
           width: { ideal: 640 },
           height: { ideal: 480 },
-          facingMode: 'user'
+          facingMode: this.videoDeviceId ? undefined : { ideal: this.facingMode },
+          deviceId: this.videoDeviceId ? { exact: this.videoDeviceId } : undefined
         } : false,
-        audio: audio
+        audio: audio ? {
+          deviceId: this.audioDeviceId ? { exact: this.audioDeviceId } : undefined,
+          echoCancellation: true,
+          noiseSuppression: true
+        } : false
       });
       this.localStream = stream;
       return stream;
@@ -84,6 +92,74 @@ export class WebRTCManager {
       this.localStream = this.createEmptyStream();
       return this.localStream;
     }
+  }
+
+  async getMediaDevices() {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return {
+      cameras: devices.filter(device => device.kind === 'videoinput'),
+      microphones: devices.filter(device => device.kind === 'audioinput')
+    };
+  }
+
+  async switchVideoInput(deviceId?: string) {
+    this.videoDeviceId = deviceId || null;
+    if (!deviceId) {
+      this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
+    }
+    const replacement = await navigator.mediaDevices.getUserMedia({
+      video: deviceId
+        ? { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+        : { facingMode: { exact: this.facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    });
+    await this.replaceTrack('video', replacement.getVideoTracks()[0]);
+    return this.localStream;
+  }
+
+  async switchAudioInput(deviceId: string) {
+    this.audioDeviceId = deviceId;
+    const replacement = await navigator.mediaDevices.getUserMedia({
+      video: false,
+      audio: {
+        deviceId: { exact: deviceId },
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+    });
+    await this.replaceTrack('audio', replacement.getAudioTracks()[0]);
+    return this.localStream;
+  }
+
+  private async replaceTrack(kind: 'audio' | 'video', nextTrack: MediaStreamTrack) {
+    const previousTrack = this.localStream?.getTracks().find(track => track.kind === kind);
+    if (previousTrack && this.localStream) {
+      this.localStream.removeTrack(previousTrack);
+      previousTrack.stop();
+    }
+    if (!this.localStream) this.localStream = new MediaStream();
+    this.localStream.addTrack(nextTrack);
+
+    const sender = this.peerConnection?.getSenders().find(item => item.track?.kind === kind);
+    if (sender) await sender.replaceTrack(nextTrack);
+  }
+
+  async getNetworkQuality(): Promise<'excellent' | 'good' | 'poor' | 'offline'> {
+    if (!this.peerConnection || this.peerConnection.connectionState === 'failed') return 'offline';
+    const stats = await this.peerConnection.getStats();
+    let roundTripTime = 0;
+    let packetsLost = 0;
+    stats.forEach(report => {
+      if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+        roundTripTime = report.currentRoundTripTime || 0;
+      }
+      if (report.type === 'inbound-rtp') {
+        packetsLost += report.packetsLost || 0;
+      }
+    });
+    if (roundTripTime > 0.45 || packetsLost > 20) return 'poor';
+    if (roundTripTime > 0.2 || packetsLost > 5) return 'good';
+    return 'excellent';
   }
 
   stopLocalStream() {
