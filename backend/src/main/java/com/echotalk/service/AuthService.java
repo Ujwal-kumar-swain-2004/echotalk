@@ -8,6 +8,8 @@ import com.echotalk.dto.AuthDto;
 import com.echotalk.entity.Interest;
 import com.echotalk.entity.User;
 import com.echotalk.repository.InterestRepository;
+import com.echotalk.repository.AccountTokenRepository;
+import com.echotalk.entity.AccountToken;
 import com.echotalk.repository.UserRepository;
 import com.echotalk.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,8 @@ public class AuthService {
     private final InterestRepository interestRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
+    private final AccountTokenRepository accountTokenRepository;
+    private final AccountMailService accountMailService;
 
     @Transactional
     public AuthDto.AuthResponse registerUser(AuthDto.RegisterRequest request) {
@@ -44,8 +48,9 @@ public class AuthService {
                 .build();
 
         user = userRepository.save(user);
+        issueToken(user, AccountToken.Type.EMAIL_VERIFICATION);
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole().name());
-        return new AuthDto.AuthResponse(token, user.getId().toString(), user.getUsername(), user.getRole().name());
+        return response(user, token);
     }
 
     public AuthDto.AuthResponse loginUser(AuthDto.LoginRequest request) {
@@ -61,7 +66,7 @@ public class AuthService {
         }
 
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole().name());
-        return new AuthDto.AuthResponse(token, user.getId().toString(), user.getUsername(), user.getRole().name());
+        return response(user, token);
     }
 
     @Transactional
@@ -72,6 +77,7 @@ public class AuthService {
                 .username(guestName)
                 .gender(request != null && request.getGender() != null ? request.getGender() : "UNSPECIFIED")
                 .role(User.Role.GUEST)
+                .emailVerified(true)
                 .build();
 
         if (request != null && request.getInterests() != null) {
@@ -86,6 +92,77 @@ public class AuthService {
 
         guest = userRepository.save(guest);
         String token = jwtTokenProvider.generateToken(guest.getId(), guest.getUsername(), guest.getRole().name());
-        return new AuthDto.AuthResponse(token, guest.getId().toString(), guest.getUsername(), guest.getRole().name());
+        return response(guest, token);
+    }
+
+    @Transactional
+    public void verifyEmail(String rawToken) {
+        AccountToken token = requireToken(rawToken, AccountToken.Type.EMAIL_VERIFICATION);
+        User user = userRepository.findById(token.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setEmailVerified(true);
+        token.setUsedAt(java.time.Instant.now());
+        userRepository.save(user);
+        accountTokenRepository.save(token);
+    }
+
+    @Transactional
+    public void resendVerification(String email) {
+        userRepository.findByEmail(email).filter(user -> !user.isEmailVerified())
+                .ifPresent(user -> issueToken(user, AccountToken.Type.EMAIL_VERIFICATION));
+    }
+
+    @Transactional
+    public void requestPasswordReset(String email) {
+        userRepository.findByEmail(email)
+                .ifPresent(user -> issueToken(user, AccountToken.Type.PASSWORD_RESET));
+    }
+
+    @Transactional
+    public void resetPassword(String rawToken, String password) {
+        AccountToken token = requireToken(rawToken, AccountToken.Type.PASSWORD_RESET);
+        User user = userRepository.findById(token.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        user.setPasswordHash(passwordEncoder.encode(password));
+        token.setUsedAt(java.time.Instant.now());
+        userRepository.save(user);
+        accountTokenRepository.save(token);
+    }
+
+    private void issueToken(User user, AccountToken.Type type) {
+        accountTokenRepository.deleteByUserIdAndType(user.getId(), type);
+        String rawToken = UUID.randomUUID().toString() + UUID.randomUUID();
+        AccountToken token = accountTokenRepository.save(AccountToken.builder()
+                .userId(user.getId())
+                .token(rawToken)
+                .type(type)
+                .expiresAt(java.time.Instant.now().plus(
+                        type == AccountToken.Type.EMAIL_VERIFICATION ? 24 : 1,
+                        java.time.temporal.ChronoUnit.HOURS))
+                .build());
+        if (type == AccountToken.Type.EMAIL_VERIFICATION) {
+            accountMailService.sendVerification(user.getEmail(), token.getToken());
+        } else {
+            accountMailService.sendPasswordReset(user.getEmail(), token.getToken());
+        }
+    }
+
+    private AccountToken requireToken(String rawToken, AccountToken.Type type) {
+        AccountToken token = accountTokenRepository.findByTokenAndType(rawToken, type)
+                .orElseThrow(() -> new IllegalArgumentException("Invalid token"));
+        if (token.getUsedAt() != null || token.getExpiresAt().isBefore(java.time.Instant.now())) {
+            throw new IllegalArgumentException("Token is expired or already used");
+        }
+        return token;
+    }
+
+    private AuthDto.AuthResponse response(User user, String token) {
+        return new AuthDto.AuthResponse(
+                token,
+                user.getId().toString(),
+                user.getUsername(),
+                user.getRole().name(),
+                user.isEmailVerified()
+        );
     }
 }

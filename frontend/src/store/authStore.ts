@@ -7,6 +7,7 @@ interface User {
   role: string;
   gender?: string;
   interests?: string[];
+  emailVerified?: boolean;
 }
 
 interface AuthState {
@@ -36,9 +37,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await axios.post(`${API_URL}/login`, { username, password });
-      const { token, userId, username: resUsername, role } = response.data;
+      const { token, userId, username: resUsername, role, emailVerified } = response.data;
       
-      const userData = { id: userId, username: resUsername, role };
+      const userData = { id: userId, username: resUsername, role, emailVerified };
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
       
@@ -56,9 +57,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await axios.post(`${API_URL}/register`, { username, email, password, gender });
-      const { token, userId, username: resUsername, role } = response.data;
+      const { token, userId, username: resUsername, role, emailVerified } = response.data;
       
-      const userData = { id: userId, username: resUsername, role, gender };
+      const userData = { id: userId, username: resUsername, role, gender, emailVerified };
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
       

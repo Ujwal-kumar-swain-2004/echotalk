@@ -38,7 +38,7 @@ export const RegisterPage: React.FC = () => {
   const onSubmit = async (data: RegisterSchemaType) => {
     try {
       await signup(data.username, data.email, data.password, data.gender);
-      navigate('/chat');
+      navigate('/verify-email?sent=1');
     } catch (err) {
       console.error(err);
     }

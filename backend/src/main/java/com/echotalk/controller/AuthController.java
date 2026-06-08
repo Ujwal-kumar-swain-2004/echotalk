@@ -28,4 +28,28 @@ public class AuthController {
     public ResponseEntity<AuthDto.AuthResponse> guest(@RequestBody(required = false) AuthDto.GuestRequest request) {
         return ResponseEntity.ok(authService.createGuest(request != null ? request : new AuthDto.GuestRequest()));
     }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody AuthDto.TokenRequest request) {
+        authService.verifyEmail(request.getToken());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/resend-verification")
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody AuthDto.EmailRequest request) {
+        authService.resendVerification(request.getEmail());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@Valid @RequestBody AuthDto.EmailRequest request) {
+        authService.requestPasswordReset(request.getEmail());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@Valid @RequestBody AuthDto.ResetPasswordRequest request) {
+        authService.resetPassword(request.getToken(), request.getPassword());
+        return ResponseEntity.noContent().build();
+    }
 }

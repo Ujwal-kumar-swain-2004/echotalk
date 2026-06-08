@@ -33,17 +33,39 @@ public class AuthDto {
     }
 
     @Data
+    public static class EmailRequest {
+        @Email @NotBlank
+        private String email;
+    }
+
+    @Data
+    public static class TokenRequest {
+        @NotBlank
+        private String token;
+    }
+
+    @Data
+    public static class ResetPasswordRequest {
+        @NotBlank
+        private String token;
+        @NotBlank @Size(min = 8)
+        private String password;
+    }
+
+    @Data
     public static class AuthResponse {
         private String token;
         private String userId;
         private String username;
         private String role;
+        private boolean emailVerified;
 
-        public AuthResponse(String token, String userId, String username, String role) {
+        public AuthResponse(String token, String userId, String username, String role, boolean emailVerified) {
             this.token = token;
             this.userId = userId;
             this.username = username;
             this.role = role;
+            this.emailVerified = emailVerified;
         }
     }
 }
