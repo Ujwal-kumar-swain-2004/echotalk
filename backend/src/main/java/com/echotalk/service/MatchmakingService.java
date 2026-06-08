@@ -14,10 +14,12 @@ import java.util.*;
 public class MatchmakingService {
 
     private final StringRedisTemplate redisTemplate;
+    private final UserBlockService userBlockService;
 
     private static final String QUEUE_PREFIX = "matchmaking:queue:";
     private static final String USER_GENDER_KEY = "matchmaking:user:gender:";
     private static final String USER_INTERESTS_KEY = "matchmaking:user:interests:";
+    private static final String USER_PREFERENCE_KEY = "matchmaking:user:preference:";
     private static final String ACTIVE_MATCH_KEY = "matchmaking:active:";
 
     // TTL constants to prevent stale data accumulation
@@ -30,6 +32,7 @@ public class MatchmakingService {
     public void addToQueue(String userId, String gender, String preferredGender, List<String> interests) {
         // Store user metadata with TTL
         redisTemplate.opsForValue().set(USER_GENDER_KEY + userId, gender, QUEUE_METADATA_TTL);
+        redisTemplate.opsForValue().set(USER_PREFERENCE_KEY + userId, preferredGender, QUEUE_METADATA_TTL);
         if (interests != null && !interests.isEmpty()) {
             String interestsKey = USER_INTERESTS_KEY + userId;
             redisTemplate.opsForSet().add(interestsKey, interests.toArray(new String[0]));
@@ -69,23 +72,42 @@ public class MatchmakingService {
         Long size = redisTemplate.opsForList().size(queueKey);
         if (size == null || size == 0) return null;
 
-        // Iterate queue to find a valid match (not self, not already matched)
+        String requesterGender = redisTemplate.opsForValue().get(USER_GENDER_KEY + userId);
+        Set<String> requesterInterests = getInterests(userId);
+        String bestCandidate = null;
+        int bestSharedInterests = -1;
+
+        // Select the compatible candidate with the most shared interests.
         for (int i = 0; i < size; i++) {
             String candidateId = redisTemplate.opsForList().index(queueKey, i);
-            if (candidateId != null && !candidateId.equals(userId) && !isInActiveMatch(candidateId)) {
-                // Remove matched user from all queues
-                removeFromAllQueues(candidateId);
-                removeFromAllQueues(userId);
+            if (candidateId == null
+                    || candidateId.equals(userId)
+                    || isInActiveMatch(candidateId)
+                    || userBlockService.isBlockedEitherWay(userId, candidateId)) {
+                continue;
+            }
 
-                // Mark both as active match
-                setActiveMatch(userId, candidateId);
-                setActiveMatch(candidateId, userId);
+            String candidatePreference = redisTemplate.opsForValue().get(USER_PREFERENCE_KEY + candidateId);
+            if (!acceptsGender(candidatePreference, requesterGender)) {
+                continue;
+            }
 
-                log.info("Match found: {} <-> {}", userId, candidateId);
-                return candidateId;
+            Set<String> shared = new HashSet<>(requesterInterests);
+            shared.retainAll(getInterests(candidateId));
+            if (shared.size() > bestSharedInterests) {
+                bestCandidate = candidateId;
+                bestSharedInterests = shared.size();
             }
         }
-        return null;
+
+        if (bestCandidate == null) return null;
+
+        removeFromAllQueues(bestCandidate);
+        removeFromAllQueues(userId);
+        setActiveMatch(userId, bestCandidate);
+        setActiveMatch(bestCandidate, userId);
+        log.info("Match found: {} <-> {} ({} shared interests)", userId, bestCandidate, bestSharedInterests);
+        return bestCandidate;
     }
 
     /**
@@ -97,7 +119,19 @@ public class MatchmakingService {
         }
         // Clean up metadata
         redisTemplate.delete(USER_GENDER_KEY + userId);
+        redisTemplate.delete(USER_PREFERENCE_KEY + userId);
         redisTemplate.delete(USER_INTERESTS_KEY + userId);
+    }
+
+    private Set<String> getInterests(String userId) {
+        Set<String> interests = redisTemplate.opsForSet().members(USER_INTERESTS_KEY + userId);
+        return interests != null ? interests : Collections.emptySet();
+    }
+
+    private boolean acceptsGender(String preference, String gender) {
+        return preference == null
+                || preference.equalsIgnoreCase("RANDOM")
+                || preference.equalsIgnoreCase(gender);
     }
 
     /**
