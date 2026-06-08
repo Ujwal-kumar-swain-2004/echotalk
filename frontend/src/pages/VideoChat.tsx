@@ -5,9 +5,12 @@ import { useMatchStore } from '../store/matchStore';
 import { useAuthStore } from '../store/authStore';
 import {
   Mic, MicOff, Video, VideoOff, SkipForward, Power, AlertTriangle,
-  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall
+  Send, Loader2, Sparkles, MessageSquare, AlertCircle, CheckCircle, ShieldAlert, PhoneCall, Ban,
+  Wifi, WifiOff, RefreshCw, SlidersHorizontal, Bell, PictureInPicture, UserPlus, Languages
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
+import api from '../services/api';
 
 export const VideoChat: React.FC = () => {
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -16,18 +19,37 @@ export const VideoChat: React.FC = () => {
 
   const { user } = useAuthStore();
   const { messages, isPeerTyping } = useChatStore();
-  const { interests, error, setError } = useMatchStore();
+  const { interests, error, setError, peerUserId } = useMatchStore();
+  const [searchParams] = useSearchParams();
+  const privateRoomStarted = useRef(false);
 
   const {
-    isMuted, isVideoOff, connectionStatus, isSearching, isMatched,
+    isMuted, isVideoOff, connectionStatus, isSearching, isMatched, networkQuality,
+    isSocketReconnecting, cameras, microphones, notificationsEnabled,
     startMatchmaking, skipToNext, endChat, toggleMute, toggleCamera,
-    sendMessage, sendTyping, reportUser
+    switchCamera, switchMicrophone, sendMessage, sendTyping, reportUser, blockUser, enableNotifications,
+    setTranslationLanguage, startPrivateRoom
   } = useWebRTC(localVideoRef, remoteVideoRef);
 
   const [messageInput, setMessageInput] = useState('');
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState('Inappropriate Content');
   const [reportSuccess, setReportSuccess] = useState(false);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
+  const [translationLanguage, setTranslationLanguageState] = useState('original');
+  const [friendRequested, setFriendRequested] = useState(false);
+
+  useEffect(() => {
+    const roomCode = searchParams.get('room');
+    if (roomCode && !privateRoomStarted.current) {
+      privateRoomStarted.current = true;
+      startPrivateRoom(roomCode);
+    }
+  }, [searchParams, startPrivateRoom]);
+
+  useEffect(() => {
+    setFriendRequested(false);
+  }, [peerUserId]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,7 +74,30 @@ export const VideoChat: React.FC = () => {
     }, 1500);
   };
 
+  const requestFriend = async () => {
+    if (!peerUserId) return;
+    await api.post(`/social/friends/${peerUserId}`);
+    setFriendRequested(true);
+  };
+
   const isConnected = connectionStatus === 'connected';
+
+  const openPictureInPicture = async () => {
+    const video = remoteVideoRef.current;
+    if (!video || !document.pictureInPictureEnabled) {
+      setError('Picture-in-picture is not supported by this browser.');
+      return;
+    }
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await video.requestPictureInPicture();
+      }
+    } catch {
+      setError('Unable to open picture-in-picture.');
+    }
+  };
 
   const renderVideoOverlay = () => {
     switch (connectionStatus) {
@@ -211,19 +256,34 @@ export const VideoChat: React.FC = () => {
               {isVideoOff ? <VideoOff className="w-4.5 h-4.5" /> : <Video className="w-4.5 h-4.5" />}
               <span className="text-xs font-medium">{isVideoOff ? 'Start Video' : 'Camera'}</span>
             </ToolbarBtn>
+            <ToolbarBtn active={deviceMenuOpen} onClick={() => setDeviceMenuOpen(value => !value)} title="Audio and video devices">
+              <SlidersHorizontal className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">Devices</span>
+            </ToolbarBtn>
+            <ToolbarBtn active={false} onClick={() => switchCamera()} title="Switch front/rear camera">
+              <RefreshCw className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">Flip</span>
+            </ToolbarBtn>
+            <ToolbarBtn active={notificationsEnabled} onClick={enableNotifications} title="Enable match notifications">
+              <Bell className="w-4.5 h-4.5" />
+            </ToolbarBtn>
           </div>
 
           {/* Center: status indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : isSearching ? 'bg-amber-400 animate-pulse' : 'bg-gray-600'}`} />
+            {networkQuality === 'offline' ? <WifiOff className="w-3.5 h-3.5 text-rose-400" /> : <Wifi className="w-3.5 h-3.5 text-emerald-400" />}
             <span className="text-gray-500 font-medium">
-              {isConnected ? 'Connected' : isSearching ? 'Searching...' : 'Idle'}
+              {isSocketReconnecting ? 'Reconnecting...' : isConnected ? `${networkQuality} network` : isSearching ? 'Searching...' : 'Idle'}
             </span>
           </div>
 
           {/* Right: next + stop */}
           <div className="flex items-center gap-2">
+            <ToolbarBtn active={false} onClick={openPictureInPicture} disabled={!isConnected} title="Picture in picture">
+              <PictureInPicture className="w-4.5 h-4.5" />
+              <span className="hidden sm:inline text-xs font-medium">PiP</span>
+            </ToolbarBtn>
             <ToolbarBtn active={false} onClick={skipToNext} disabled={!isSearching && !isMatched} title="Next stranger">
               <SkipForward className="w-4.5 h-4.5 text-violet-400" />
               <span className="text-xs font-medium">Next</span>
@@ -234,6 +294,34 @@ export const VideoChat: React.FC = () => {
             </ToolbarBtn>
           </div>
         </div>
+
+        {deviceMenuOpen && (
+          <div className="shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl"
+            style={{ background: 'rgba(10,10,20,0.96)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <label className="text-xs text-gray-400">
+              Camera
+              <select onChange={event => switchCamera(event.target.value)}
+                className="mt-1.5 w-full rounded-xl px-3 py-2 text-white bg-[#151522] border border-white/10">
+                {cameras.map((camera, index) => (
+                  <option key={camera.deviceId} value={camera.deviceId}>
+                    {camera.label || `Camera ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs text-gray-400">
+              Microphone
+              <select onChange={event => switchMicrophone(event.target.value)}
+                className="mt-1.5 w-full rounded-xl px-3 py-2 text-white bg-[#151522] border border-white/10">
+                {microphones.map((microphone, index) => (
+                  <option key={microphone.deviceId} value={microphone.deviceId}>
+                    {microphone.label || `Microphone ${index + 1}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ── RIGHT: CHAT PANEL ── */}
@@ -259,11 +347,23 @@ export const VideoChat: React.FC = () => {
             </div>
           </div>
           {isMatched && (
-            <button onClick={() => setReportOpen(true)} title="Report stranger"
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
-              style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-              <AlertTriangle className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={requestFriend} disabled={friendRequested} title="Send friend request"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-emerald-400 disabled:text-emerald-500 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <UserPlus className="w-4 h-4" />
+              </button>
+              <button onClick={blockUser} title="Block stranger"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <Ban className="w-4 h-4" />
+              </button>
+              <button onClick={() => setReportOpen(true)} title="Report stranger"
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 hover:text-rose-400 transition-all duration-200 cursor-pointer"
+                style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+                <AlertTriangle className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -307,7 +407,10 @@ export const VideoChat: React.FC = () => {
                       }`} style={isSelf
                         ? { background: 'linear-gradient(135deg, #7c3aed, #5b21b6)', boxShadow: '0 4px 16px rgba(124,58,237,0.25)' }
                         : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                      {msg.content}
+                      {msg.translatedContent || msg.content}
+                      {msg.translatedContent && msg.translatedContent !== msg.content && (
+                        <span className="block mt-1 text-[10px] opacity-50">{msg.content}</span>
+                      )}
                     </div>
                   </motion.div>
                 );
@@ -344,6 +447,22 @@ export const VideoChat: React.FC = () => {
 
         {/* Message Input */}
         <div className="p-4 shrink-0" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <label className="mb-2 flex items-center gap-2 text-[11px] text-gray-500">
+            <Languages className="w-3.5 h-3.5" />
+            Translate incoming messages
+            <select value={translationLanguage} onChange={event => {
+              setTranslationLanguageState(event.target.value);
+              setTranslationLanguage(event.target.value);
+            }} className="ml-auto bg-[#151522] border border-white/10 rounded-lg px-2 py-1 text-gray-300">
+              <option value="original">Original</option>
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+              <option value="es">Spanish</option>
+              <option value="fr">French</option>
+              <option value="de">German</option>
+              <option value="ja">Japanese</option>
+            </select>
+          </label>
           <form onSubmit={handleSend} className="flex gap-2.5 items-center">
             <input type="text" value={messageInput}
               onChange={e => setMessageInput(e.target.value)}

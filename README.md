@@ -73,9 +73,18 @@ sequenceDiagram
    ```
 
 4. **Access the application:**
-   - Frontend: `http://localhost:5173`
-   - Backend API: `http://localhost:8080`
-   - Swagger Documentation: `http://localhost:8080/swagger-ui.html`
+   - Frontend: `http://localhost:5180`
+   - Backend API: `http://localhost:8180`
+   - Swagger Documentation: `http://localhost:8180/swagger-ui.html`
+   - Local email inbox: `http://localhost:8025`
+   - Phone HTTPS testing: `https://YOUR_LAN_IP:5443`
+
+   Camera and microphone access on phones requires HTTPS. Install the local
+   development CA from `http://YOUR_LAN_IP:5180/echotalk-ca.crt`, then open the
+   HTTPS URL. Never use the development CA outside local testing.
+
+   Generate certificates after your LAN IP changes:
+   `powershell -File scripts/generate-local-certs.ps1 -LanIp YOUR_LAN_IP`
 
 ### Manual Setup
 

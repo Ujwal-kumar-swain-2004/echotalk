@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,8 +6,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-echotalk}
       POSTGRES_USER: ${POSTGRES_USER:-echotalk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-echotalk_secret}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -23,8 +19,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: echotalk-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -35,14 +29,42 @@ services:
       timeout: 5s
       retries: 5
 
+  mailpit:
+    image: axllent/mailpit:v1.27
+    container_name: echotalk-mailpit
+    ports:
+      - "8025:8025"
+    networks:
+      - echotalk-net
+
+  turn:
+    image: coturn/coturn:4.6-alpine
+    container_name: echotalk-turn
+    command:
+      - --no-cli
+      - --log-file=stdout
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=${TURN_REALM:-echotalk.local}
+      - --user=${TURN_USERNAME:-echotalk}:${TURN_CREDENTIAL:-change-this-turn-password}
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      - echotalk-net
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: echotalk-backend
     ports:
-      - "8080:8080"
-      - "8081:8081"
+      - "8180:8080"
+      - "8181:8081"
     environment:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/echotalk}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-echotalk}
@@ -51,11 +73,21 @@ services:
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
       JWT_SECRET: ${JWT_SECRET:-echotalk-super-secret-jwt-key-change-in-production-2024}
       SOCKETIO_PORT: ${SOCKETIO_PORT:-8081}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost:5180,https://localhost:5443}
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-no-reply@echotalk.local}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-false}
+      MAIL_STARTTLS: ${MAIL_STARTTLS:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5180}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     networks:
       - echotalk-net
 
@@ -63,11 +95,21 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-}
+        VITE_TURN_URLS: ${VITE_TURN_URLS:-turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp}
+        VITE_TURN_USERNAME: ${TURN_USERNAME:-echotalk}
+        VITE_TURN_CREDENTIAL: ${TURN_CREDENTIAL:-change-this-turn-password}
     container_name: echotalk-frontend
     ports:
-      - "5173:80"
+      - "5180:80"
+      - "5443:443"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
+      - turn
     networks:
       - echotalk-net
 

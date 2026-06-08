@@ -12,6 +12,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 import java.util.List;
+import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -32,6 +33,9 @@ class MatchmakingServiceTest {
     @Mock
     private SetOperations<String, String> setOperations;
 
+    @Mock
+    private UserBlockService userBlockService;
+
     @InjectMocks
     private MatchmakingService matchmakingService;
 
@@ -41,6 +45,7 @@ class MatchmakingServiceTest {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        lenient().when(userBlockService.isBlockedEitherWay(anyString(), anyString())).thenReturn(false);
     }
 
     @Test
@@ -52,7 +57,8 @@ class MatchmakingServiceTest {
 
         matchmakingService.addToQueue(userId, gender, preferredGender, interests);
 
-        verify(valueOperations).set("matchmaking:user:gender:user1", "MALE");
+        verify(valueOperations).set("matchmaking:user:gender:user1", "MALE", Duration.ofMinutes(10));
+        verify(valueOperations).set("matchmaking:user:preference:user1", "FEMALE", Duration.ofMinutes(10));
         verify(setOperations).add(eq("matchmaking:user:interests:user1"), any(String[].class));
         verify(listOperations).rightPush("matchmaking:queue:male", "user1");
         verify(listOperations).rightPush("matchmaking:queue:all", "user1");
@@ -77,8 +83,8 @@ class MatchmakingServiceTest {
         // Verify both were removed from queues and active match was set
         verify(listOperations, atLeastOnce()).remove(anyString(), eq(0L), eq(candidateId));
         verify(listOperations, atLeastOnce()).remove(anyString(), eq(0L), eq(userId));
-        verify(valueOperations).set("matchmaking:active:" + userId, candidateId);
-        verify(valueOperations).set("matchmaking:active:" + candidateId, userId);
+        verify(valueOperations).set("matchmaking:active:" + userId, candidateId, Duration.ofHours(2));
+        verify(valueOperations).set("matchmaking:active:" + candidateId, userId, Duration.ofHours(2));
     }
 
     @Test
@@ -115,6 +121,7 @@ class MatchmakingServiceTest {
         verify(listOperations).remove("matchmaking:queue:unspecified", 0, "user1");
         verify(listOperations).remove("matchmaking:queue:all", 0, "user1");
         verify(redisTemplate).delete("matchmaking:user:gender:user1");
+        verify(redisTemplate).delete("matchmaking:user:preference:user1");
         verify(redisTemplate).delete("matchmaking:user:interests:user1");
     }
 

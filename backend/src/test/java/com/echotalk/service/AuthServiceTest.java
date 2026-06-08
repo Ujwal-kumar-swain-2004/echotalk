@@ -2,12 +2,14 @@ package com.echotalk.service;
 
 import com.echotalk.dto.AuthDto;
 import com.echotalk.entity.Interest;
+import com.echotalk.entity.AccountToken;
 import com.echotalk.entity.User;
 import com.echotalk.exception.DuplicateEmailException;
 import com.echotalk.exception.DuplicateUsernameException;
 import com.echotalk.exception.InvalidCredentialsException;
 import com.echotalk.exception.UserBannedException;
 import com.echotalk.repository.InterestRepository;
+import com.echotalk.repository.AccountTokenRepository;
 import com.echotalk.repository.UserRepository;
 import com.echotalk.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +44,12 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private AccountTokenRepository accountTokenRepository;
+
+    @Mock
+    private AccountMailService accountMailService;
+
     @InjectMocks
     private AuthService authService;
 
@@ -57,7 +65,7 @@ class AuthServiceTest {
                 .email("test@example.com")
                 .passwordHash("hashedpassword")
                 .role(User.Role.USER)
-                .isBanned(false)
+                .banned(false)
                 .build();
 
         registerRequest = new AuthDto.RegisterRequest();
@@ -77,6 +85,8 @@ class AuthServiceTest {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
         when(passwordEncoder.encode(anyString())).thenReturn("hashedpassword");
         when(userRepository.save(any(User.class))).thenReturn(testUser);
+        when(accountTokenRepository.save(any(AccountToken.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         when(jwtTokenProvider.generateToken(any(), anyString(), anyString())).thenReturn("test.jwt.token");
 
         AuthDto.AuthResponse response = authService.registerUser(registerRequest);
@@ -106,7 +116,8 @@ class AuthServiceTest {
 
     @Test
     void loginUser_Success() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(jwtTokenProvider.generateToken(any(), anyString(), anyString())).thenReturn("test.jwt.token");
 
@@ -118,14 +129,16 @@ class AuthServiceTest {
 
     @Test
     void loginUser_UserNotFound_ThrowsException() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.empty());
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.empty());
 
         assertThrows(InvalidCredentialsException.class, () -> authService.loginUser(loginRequest));
     }
 
     @Test
     void loginUser_InvalidPassword_ThrowsException() {
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(false);
 
         assertThrows(InvalidCredentialsException.class, () -> authService.loginUser(loginRequest));
@@ -134,7 +147,8 @@ class AuthServiceTest {
     @Test
     void loginUser_UserBanned_ThrowsException() {
         testUser.setBanned(true);
-        when(userRepository.findByUsername(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(anyString(), anyString()))
+                .thenReturn(Optional.of(testUser));
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
 
         assertThrows(UserBannedException.class, () -> authService.loginUser(loginRequest));

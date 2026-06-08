@@ -30,6 +30,9 @@ public class User {
 
     private String passwordHash;
 
+    @Builder.Default
+    private boolean emailVerified = false;
+
     @Column(nullable = false)
     @Builder.Default
     private String gender = "UNSPECIFIED";

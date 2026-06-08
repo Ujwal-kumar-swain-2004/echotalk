@@ -10,7 +10,7 @@ export const useWebRTC = (
   localVideoRef: React.RefObject<HTMLVideoElement | null>,
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>
 ) => {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const { 
     currentRoomId, 
     isMatched, 
@@ -33,6 +33,15 @@ export const useWebRTC = (
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'searching' | 'connecting' | 'connected' | 'disconnected'>('idle');
+  const [networkQuality, setNetworkQuality] = useState<'excellent' | 'good' | 'poor' | 'offline'>(
+    navigator.onLine ? 'good' : 'offline'
+  );
+  const [isSocketReconnecting, setIsSocketReconnecting] = useState(false);
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [microphones, setMicrophones] = useState<MediaDeviceInfo[]>([]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    'Notification' in window && Notification.permission === 'granted'
+  );
 
   const rtcManagerRef = useRef<WebRTCManager | null>(null);
 
@@ -67,6 +76,9 @@ export const useWebRTC = (
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
         }
+        const devices = await rtcManagerRef.current.getMediaDevices();
+        setCameras(devices.cameras);
+        setMicrophones(devices.microphones);
       } catch (err) {
         console.error('Failed to get camera/mic stream:', err);
         setError('Camera and microphone access are required to chat.');
@@ -84,12 +96,28 @@ export const useWebRTC = (
 
   // Connect socket and handle matchmaking & signaling events
   useEffect(() => {
-    if (!user) return;
+    if (!user || !token) return;
 
-    socketService.connect(user.id);
+    socketService.connect(token);
 
     socketService.on('onlineCount', (data: { count: number }) => {
       setOnlineCount(data.count);
+    });
+
+    socketService.on('connect', () => {
+      setIsSocketReconnecting(false);
+      const state = useMatchStore.getState();
+      if (state.isSearching) {
+        socketService.emit('joinQueue', {
+          gender: state.gender,
+          preferredGender: state.preferredGender,
+          interests: state.interests
+        });
+      }
+    });
+
+    socketService.on('disconnect', () => {
+      setIsSocketReconnecting(true);
     });
 
     socketService.on('waitingForMatch', () => {
@@ -97,12 +125,18 @@ export const useWebRTC = (
       console.log('Waiting for a match...');
     });
 
-    socketService.on('matchFound', async (data: { roomId: string; isInitiator: boolean }) => {
+    socketService.on('matchFound', async (data: { roomId: string; isInitiator: boolean; peerId?: string }) => {
       console.log('Match found! Room ID:', data.roomId, 'Is Initiator:', data.isInitiator);
       soundService.playMatchFound();
-      setMatched(data.roomId, data.isInitiator);
+      setMatched(data.roomId, data.isInitiator, data.peerId);
       setConnectionStatus('connecting');
       clearMessages();
+      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+        new Notification('EchoTalk match found', {
+          body: 'Your video chat is ready.',
+          icon: '/favicon.svg'
+        });
+      }
 
       if (rtcManagerRef.current) {
         rtcManagerRef.current.createPeerConnection();
@@ -162,7 +196,7 @@ export const useWebRTC = (
       }
     });
 
-    socketService.on('message', (data: { content: string; senderId: string; timestamp: number }) => {
+    socketService.on('message', (data: { content: string; translatedContent?: string; senderId: string; timestamp: number }) => {
       soundService.playMessageReceived();
       addMessage(data);
     });
@@ -190,7 +224,28 @@ export const useWebRTC = (
     return () => {
       socketService.disconnect();
     };
-  }, [user]);
+  }, [user, token]);
+
+  useEffect(() => {
+    const markOnline = () => setNetworkQuality('good');
+    const markOffline = () => setNetworkQuality('offline');
+    window.addEventListener('online', markOnline);
+    window.addEventListener('offline', markOffline);
+    return () => {
+      window.removeEventListener('online', markOnline);
+      window.removeEventListener('offline', markOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (connectionStatus !== 'connected') return;
+    const interval = window.setInterval(async () => {
+      if (rtcManagerRef.current) {
+        setNetworkQuality(await rtcManagerRef.current.getNetworkQuality());
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [connectionStatus]);
 
   const handlePeerDisconnect = () => {
     soundService.playDisconnect();
@@ -272,6 +327,55 @@ export const useWebRTC = (
     socketService.emit('reportUser', { reason });
   };
 
+  const switchCamera = async (deviceId?: string) => {
+    if (!rtcManagerRef.current) return;
+    try {
+      const stream = await rtcManagerRef.current.switchVideoInput(deviceId);
+      setLocalStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch {
+      setError('Unable to switch camera on this device.');
+    }
+  };
+
+  const switchMicrophone = async (deviceId: string) => {
+    if (!rtcManagerRef.current) return;
+    try {
+      const stream = await rtcManagerRef.current.switchAudioInput(deviceId);
+      setLocalStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch {
+      setError('Unable to switch microphone.');
+    }
+  };
+
+  const blockUser = () => {
+    if (!currentRoomId) return;
+    socketService.emit('blockUser', {});
+    handlePeerDisconnect();
+  };
+
+  const enableNotifications = async () => {
+    if (!('Notification' in window)) {
+      setError('Notifications are not supported by this browser.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    setNotificationsEnabled(permission === 'granted');
+    if (permission !== 'granted') setError('Notification permission was not granted.');
+  };
+
+  const setTranslationLanguage = (language: string) => {
+    socketService.emit('setLanguage', { language });
+  };
+
+  const startPrivateRoom = (code: string) => {
+    clearMessages();
+    startSearch();
+    setConnectionStatus('searching');
+    socketService.emit('joinPrivateRoom', { code });
+  };
+
   return {
     localStream,
     remoteStream,
@@ -280,13 +384,24 @@ export const useWebRTC = (
     connectionStatus,
     isSearching,
     isMatched,
+    networkQuality,
+    isSocketReconnecting,
+    cameras,
+    microphones,
+    notificationsEnabled,
     startMatchmaking,
     skipToNext,
     endChat,
     toggleMute,
     toggleCamera,
+    switchCamera,
+    switchMicrophone,
     sendMessage,
     sendTyping,
-    reportUser
+    reportUser,
+    blockUser
+    ,enableNotifications,
+    setTranslationLanguage,
+    startPrivateRoom
   };
 };
