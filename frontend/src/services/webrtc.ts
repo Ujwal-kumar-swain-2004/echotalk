@@ -1,9 +1,21 @@
-const ICE_SERVERS = {
+const turnUrls = (import.meta.env.VITE_TURN_URLS || '')
+  .split(',')
+  .map((url: string) => url.trim())
+  .filter(Boolean);
+
+const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-  ]
+    ...(turnUrls.length > 0
+      ? [{
+          urls: turnUrls,
+          username: import.meta.env.VITE_TURN_USERNAME || '',
+          credential: import.meta.env.VITE_TURN_CREDENTIAL || ''
+        }]
+      : [])
+  ],
+  iceCandidatePoolSize: 10
 };
 
 export class WebRTCManager {

@@ -35,6 +35,26 @@ services:
       timeout: 5s
       retries: 5
 
+  turn:
+    image: coturn/coturn:4.6-alpine
+    container_name: echotalk-turn
+    command:
+      - --no-cli
+      - --log-file=stdout
+      - --fingerprint
+      - --lt-cred-mech
+      - --realm=${TURN_REALM:-echotalk.local}
+      - --user=${TURN_USERNAME:-echotalk}:${TURN_CREDENTIAL:-change-this-turn-password}
+      - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "49160-49200:49160-49200/udp"
+    networks:
+      - echotalk-net
+
   backend:
     build:
       context: ./backend
@@ -63,11 +83,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+        VITE_SOCKET_URL: ${VITE_SOCKET_URL:-http://localhost:8081}
+        VITE_TURN_URLS: ${VITE_TURN_URLS:-turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp}
+        VITE_TURN_USERNAME: ${TURN_USERNAME:-echotalk}
+        VITE_TURN_CREDENTIAL: ${TURN_CREDENTIAL:-change-this-turn-password}
     container_name: echotalk-frontend
     ports:
       - "5173:80"
     depends_on:
       - backend
+      - turn
     networks:
       - echotalk-net
 

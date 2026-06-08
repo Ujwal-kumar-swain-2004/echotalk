@@ -6,6 +6,7 @@ import com.corundumstudio.socketio.listener.ConnectListener;
 import com.corundumstudio.socketio.listener.DataListener;
 import com.corundumstudio.socketio.listener.DisconnectListener;
 import com.echotalk.entity.ChatRoom;
+import com.echotalk.security.JwtTokenProvider;
 import com.echotalk.service.ChatService;
 import com.echotalk.service.MatchmakingService;
 import com.echotalk.service.ModerationService;
@@ -30,6 +31,7 @@ public class SocketIOEventHandler {
     private final ChatService chatService;
     private final ModerationService moderationService;
     private final OnlineUserService onlineUserService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     // Map: sessionId -> userId
     private final Map<UUID, String> sessionUserMap = new ConcurrentHashMap<>();
@@ -64,8 +66,9 @@ public class SocketIOEventHandler {
 
     private ConnectListener onConnect() {
         return client -> {
-            String userId = getQueryParam(client, "userId");
-            if (userId != null) {
+            String token = getQueryParam(client, "token");
+            if (token != null && jwtTokenProvider.validateToken(token)) {
+                String userId = jwtTokenProvider.getUserIdFromToken(token).toString();
                 sessionUserMap.put(client.getSessionId(), userId);
                 userSessionMap.put(userId, client.getSessionId());
                 onlineUserService.addOnlineUser(userId);
@@ -74,7 +77,8 @@ public class SocketIOEventHandler {
                 // Send online count to all
                 broadcastOnlineCount();
             } else {
-                log.warn("Client connected without userId, disconnecting");
+                log.warn("Rejected unauthenticated Socket.IO client {}", client.getSessionId());
+                client.sendEvent("error", Map.of("message", "Invalid or expired authentication token"));
                 client.disconnect();
             }
         };

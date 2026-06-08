@@ -10,7 +10,7 @@ export const useWebRTC = (
   localVideoRef: React.RefObject<HTMLVideoElement | null>,
   remoteVideoRef: React.RefObject<HTMLVideoElement | null>
 ) => {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   const { 
     currentRoomId, 
     isMatched, 
@@ -84,9 +84,9 @@ export const useWebRTC = (
 
   // Connect socket and handle matchmaking & signaling events
   useEffect(() => {
-    if (!user) return;
+    if (!user || !token) return;
 
-    socketService.connect(user.id);
+    socketService.connect(token);
 
     socketService.on('onlineCount', (data: { count: number }) => {
       setOnlineCount(data.count);
@@ -190,7 +190,7 @@ export const useWebRTC = (
     return () => {
       socketService.disconnect();
     };
-  }, [user]);
+  }, [user, token]);
 
   const handlePeerDisconnect = () => {
     soundService.playDisconnect();
