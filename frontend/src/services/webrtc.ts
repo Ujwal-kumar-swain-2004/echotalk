@@ -1,9 +1,9 @@
-import { usePageHostname } from './runtimeUrl';
+import { resolvePageHostname } from './runtimeUrl';
 
 const turnUrls = (import.meta.env.VITE_TURN_URLS || '')
   .split(',')
   .map((url: string) => url.trim())
-  .map(usePageHostname)
+  .map(resolvePageHostname)
   .filter(Boolean);
 
 const ICE_SERVERS: RTCConfiguration = {

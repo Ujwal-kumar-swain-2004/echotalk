@@ -1,6 +1,6 @@
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
-export function usePageHostname(configuredUrl: string): string {
+export function resolvePageHostname(configuredUrl: string): string {
   if (configuredUrl.startsWith('/')) {
     return configuredUrl;
   }

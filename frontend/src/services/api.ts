@@ -1,8 +1,8 @@
 import axios from 'axios';
-import { usePageHostname } from './runtimeUrl';
+import { resolvePageHostname } from './runtimeUrl';
 
 const api = axios.create({
-  baseURL: usePageHostname(import.meta.env.VITE_API_URL || '/api'),
+  baseURL: resolvePageHostname(import.meta.env.VITE_API_URL || '/api'),
   headers: {
     'Content-Type': 'application/json',
   },

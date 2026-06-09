@@ -1,19 +1,27 @@
 import { io, Socket } from 'socket.io-client';
-import { currentOrigin, usePageHostname } from './runtimeUrl';
+import { currentOrigin, resolvePageHostname } from './runtimeUrl';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL
-  ? usePageHostname(import.meta.env.VITE_SOCKET_URL)
+  ? resolvePageHostname(import.meta.env.VITE_SOCKET_URL)
   : currentOrigin('http://localhost:8081');
 
 class SocketService {
   private socket: Socket | null = null;
+  private token: string | null = null;
 
   connect(token: string) {
+    if (this.socket && this.token === token) {
+      if (!this.socket.active) {
+        this.socket.connect();
+      }
+      return this.socket;
+    }
+
     if (this.socket) {
-      if (this.socket.connected) return this.socket;
       this.socket.disconnect();
     }
 
+    this.token = token;
     this.socket = io(SOCKET_URL, {
       auth: { token },
       query: { token },
@@ -42,6 +50,7 @@ class SocketService {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
+      this.token = null;
     }
   }
 
