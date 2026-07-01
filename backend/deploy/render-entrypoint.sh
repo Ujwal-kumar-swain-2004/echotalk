@@ -25,7 +25,13 @@ while kill -0 "$java_pid" 2>/dev/null && kill -0 "$nginx_pid" 2>/dev/null; do
 done
 
 if ! kill -0 "$java_pid" 2>/dev/null; then
-  wait "$java_pid"
+  status=0
+  wait "$java_pid" || status=$?
+  kill -TERM "$nginx_pid" 2>/dev/null || true
+  exit "$status"
 fi
 
-wait "$nginx_pid"
+status=0
+wait "$nginx_pid" || status=$?
+kill -TERM "$java_pid" 2>/dev/null || true
+exit "$status"
