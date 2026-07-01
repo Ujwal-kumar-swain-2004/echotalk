@@ -9,6 +9,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +47,10 @@ public class AccountMailService {
     }
 
     private void send(String recipient, String subject, String html) {
+        CompletableFuture.runAsync(() -> sendNow(recipient, subject, html));
+    }
+
+    private void sendNow(String recipient, String subject, String html) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(
