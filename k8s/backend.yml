@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echotalk-backend
+  labels:
+    app: echotalk-backend
+spec:
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: socketio
+      port: 8081
+      targetPort: 8081
+  selector:
+    app: echotalk-backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echotalk-backend
+  labels:
+    app: echotalk-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echotalk-backend
+  template:
+    metadata:
+      labels:
+        app: echotalk-backend
+    spec:
+      containers:
+        - name: backend
+          image: echotalk-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: socketio
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: echotalk-config
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: echotalk-secret
+                  key: SPRING_DATASOURCE_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: echotalk-secret
+                  key: JWT_SECRET
+            - name: MAIL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: echotalk-secret
+                  key: MAIL_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /v3/api-docs
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

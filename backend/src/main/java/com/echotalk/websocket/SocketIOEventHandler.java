@@ -6,14 +6,10 @@ import com.corundumstudio.socketio.listener.ConnectListener;
 import com.corundumstudio.socketio.listener.DataListener;
 import com.corundumstudio.socketio.listener.DisconnectListener;
 import com.echotalk.entity.ChatRoom;
-import com.echotalk.security.JwtTokenProvider;
 import com.echotalk.service.ChatService;
 import com.echotalk.service.MatchmakingService;
 import com.echotalk.service.ModerationService;
 import com.echotalk.service.OnlineUserService;
-import com.echotalk.service.UserBlockService;
-import com.echotalk.service.PrivateRoomService;
-import com.echotalk.service.TranslationService;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
@@ -34,10 +30,6 @@ public class SocketIOEventHandler {
     private final ChatService chatService;
     private final ModerationService moderationService;
     private final OnlineUserService onlineUserService;
-    private final JwtTokenProvider jwtTokenProvider;
-    private final UserBlockService userBlockService;
-    private final PrivateRoomService privateRoomService;
-    private final TranslationService translationService;
 
     // Map: sessionId -> userId
     private final Map<UUID, String> sessionUserMap = new ConcurrentHashMap<>();
@@ -45,8 +37,7 @@ public class SocketIOEventHandler {
     private final Map<String, UUID> userSessionMap = new ConcurrentHashMap<>();
     // Map: userId -> chatRoomId
     private final Map<String, String> userChatRoomMap = new ConcurrentHashMap<>();
-    private final Map<String, String> userLanguageMap = new ConcurrentHashMap<>();
-    private final Map<String, String> privateRoomWaitingMap = new ConcurrentHashMap<>();
+    private final Object matchmakingLock = new Object();
 
     @PostConstruct
     public void start() {
@@ -62,9 +53,6 @@ public class SocketIOEventHandler {
         server.addEventListener("typing", Object.class, onTyping());
         server.addEventListener("message", MessageData.class, onMessage());
         server.addEventListener("reportUser", ReportData.class, onReportUser());
-        server.addEventListener("blockUser", Object.class, onBlockUser());
-        server.addEventListener("setLanguage", LanguageData.class, onSetLanguage());
-        server.addEventListener("joinPrivateRoom", PrivateRoomData.class, onJoinPrivateRoom());
 
         server.start();
         log.info("Socket.IO server started on port {}", server.getConfiguration().getPort());
@@ -77,19 +65,15 @@ public class SocketIOEventHandler {
 
     private ConnectListener onConnect() {
         return client -> {
-            String token = getQueryParam(client, "token");
-            if (token != null && jwtTokenProvider.validateToken(token)) {
-                String userId = jwtTokenProvider.getUserIdFromToken(token).toString();
+            String userId = getQueryParam(client, "userId");
+            if (userId != null) {
                 sessionUserMap.put(client.getSessionId(), userId);
                 userSessionMap.put(userId, client.getSessionId());
                 onlineUserService.addOnlineUser(userId);
                 log.info("Client connected: {} (user: {})", client.getSessionId(), userId);
-
-                // Send online count to all
                 broadcastOnlineCount();
             } else {
-                log.warn("Rejected unauthenticated Socket.IO client {}", client.getSessionId());
-                client.sendEvent("error", Map.of("message", "Invalid or expired authentication token"));
+                log.warn("Client connected without userId, disconnecting");
                 client.disconnect();
             }
         };
@@ -118,8 +102,6 @@ public class SocketIOEventHandler {
 
                 // Remove from queue
                 matchmakingService.removeFromAllQueues(userId);
-                userLanguageMap.remove(userId);
-                privateRoomWaitingMap.values().removeIf(userId::equals);
 
                 broadcastOnlineCount();
                 log.info("Client disconnected: {} (user: {})", client.getSessionId(), userId);
@@ -140,34 +122,43 @@ public class SocketIOEventHandler {
 
             log.info("User {} joining queue (gender: {}, preferred: {})", userId, data.getGender(), data.getPreferredGender());
 
-            // Add to queue
-            matchmakingService.addToQueue(userId, data.getGender(), data.getPreferredGender(), data.getInterests());
+            synchronized (matchmakingLock) {
+                if (matchmakingService.isInActiveMatch(userId)) {
+                    client.sendEvent("error", Map.of("message", "You are already in a match"));
+                    return;
+                }
 
-            // Try immediate match
-            String matchedUserId = matchmakingService.findMatch(userId, data.getPreferredGender());
-            if (matchedUserId != null) {
-                // Create chat room
-                ChatRoom room = chatService.createChatRoom(userId, matchedUserId);
-                String roomId = room.getId().toString();
-                userChatRoomMap.put(userId, roomId);
-                userChatRoomMap.put(matchedUserId, roomId);
+                // Add to queue
+                matchmakingService.addToQueue(userId, data.getGender(), data.getPreferredGender(), data.getInterests());
 
-                // Notify both users
-                Map<String, Object> matchData = new HashMap<>();
-                matchData.put("roomId", roomId);
-                matchData.put("isInitiator", true);
-                matchData.put("peerId", matchedUserId);
-                sendToUser(userId, "matchFound", matchData);
+                // Try immediate match
+                String matchedUserId = matchmakingService.findMatch(
+                        userId,
+                        data.getPreferredGender(),
+                        userSessionMap::containsKey
+                );
+                if (matchedUserId != null) {
+                    // Create chat room
+                    ChatRoom room = chatService.createChatRoom(userId, matchedUserId);
+                    String roomId = room.getId().toString();
+                    userChatRoomMap.put(userId, roomId);
+                    userChatRoomMap.put(matchedUserId, roomId);
 
-                Map<String, Object> matchData2 = new HashMap<>();
-                matchData2.put("roomId", roomId);
-                matchData2.put("isInitiator", false);
-                matchData2.put("peerId", userId);
-                sendToUser(matchedUserId, "matchFound", matchData2);
+                    // Notify both users
+                    Map<String, Object> matchData = new HashMap<>();
+                    matchData.put("roomId", roomId);
+                    matchData.put("isInitiator", true);
+                    sendToUser(userId, "matchFound", matchData);
 
-                log.info("Match found immediately: {} <-> {} in room {}", userId, matchedUserId, roomId);
-            } else {
-                client.sendEvent("waitingForMatch", Map.of("position", matchmakingService.getQueueSize()));
+                    Map<String, Object> matchData2 = new HashMap<>();
+                    matchData2.put("roomId", roomId);
+                    matchData2.put("isInitiator", false);
+                    sendToUser(matchedUserId, "matchFound", matchData2);
+
+                    log.info("Match found immediately: {} <-> {} in room {}", userId, matchedUserId, roomId);
+                } else {
+                    client.sendEvent("waitingForMatch", Map.of("position", matchmakingService.getQueueSize()));
+                }
             }
         };
     }
@@ -274,10 +265,6 @@ public class SocketIOEventHandler {
                 // Relay to partner
                 Map<String, Object> msgData = new HashMap<>();
                 msgData.put("content", data.getContent());
-                msgData.put("translatedContent", translationService.translate(
-                        data.getContent(),
-                        userLanguageMap.getOrDefault(partnerId, "original")
-                ));
                 msgData.put("senderId", userId);
                 msgData.put("timestamp", System.currentTimeMillis());
                 sendToUser(partnerId, "message", msgData);
@@ -296,68 +283,6 @@ public class SocketIOEventHandler {
             if (partnerId != null) {
                 moderationService.createReport(userId, partnerId, chatRoomId, data.getReason());
                 client.sendEvent("reportSubmitted", Map.of("message", "Report submitted successfully"));
-            }
-        };
-    }
-
-    private DataListener<Object> onBlockUser() {
-        return (client, data, ackSender) -> {
-            String userId = sessionUserMap.get(client.getSessionId());
-            if (userId == null) return;
-            String partnerId = matchmakingService.getActiveMatch(userId);
-            if (partnerId == null) return;
-
-            userBlockService.block(userId, partnerId);
-            matchmakingService.clearActiveMatch(userId);
-            String chatRoomId = userChatRoomMap.remove(userId);
-            if (chatRoomId != null) {
-                chatService.endChatRoom(chatRoomId);
-                userChatRoomMap.remove(partnerId);
-            }
-            sendToUser(partnerId, "chatEnded", Map.of("reason", "Partner ended chat"));
-            client.sendEvent("userBlocked", Map.of("message", "User blocked"));
-        };
-    }
-
-    private DataListener<LanguageData> onSetLanguage() {
-        return (client, data, ackSender) -> {
-            String userId = sessionUserMap.get(client.getSessionId());
-            if (userId != null && data.getLanguage() != null) {
-                userLanguageMap.put(userId, data.getLanguage());
-            }
-        };
-    }
-
-    private DataListener<PrivateRoomData> onJoinPrivateRoom() {
-        return (client, data, ackSender) -> {
-            String userId = sessionUserMap.get(client.getSessionId());
-            if (userId == null || data.getCode() == null) return;
-            String code = data.getCode().trim().toUpperCase();
-            try {
-                if (!privateRoomService.canJoin(code, userId)) {
-                    client.sendEvent("error", Map.of("message", "You are not a member of this private room"));
-                    return;
-                }
-                String waitingUser = privateRoomWaitingMap.putIfAbsent(code, userId);
-                if (waitingUser == null || waitingUser.equals(userId)) {
-                    client.sendEvent("waitingForMatch", Map.of("privateRoom", code));
-                    return;
-                }
-                privateRoomWaitingMap.remove(code);
-                matchmakingService.setActiveMatch(userId, waitingUser);
-                matchmakingService.setActiveMatch(waitingUser, userId);
-                ChatRoom room = chatService.createChatRoom(userId, waitingUser);
-                String roomId = room.getId().toString();
-                userChatRoomMap.put(userId, roomId);
-                userChatRoomMap.put(waitingUser, roomId);
-                sendToUser(userId, "matchFound", Map.of(
-                        "roomId", roomId, "isInitiator", true, "peerId", waitingUser
-                ));
-                sendToUser(waitingUser, "matchFound", Map.of(
-                        "roomId", roomId, "isInitiator", false, "peerId", userId
-                ));
-            } catch (IllegalArgumentException exception) {
-                client.sendEvent("error", Map.of("message", exception.getMessage()));
             }
         };
     }
@@ -411,15 +336,5 @@ public class SocketIOEventHandler {
     @Data
     public static class ReportData {
         private String reason;
-    }
-
-    @Data
-    public static class LanguageData {
-        private String language;
-    }
-
-    @Data
-    public static class PrivateRoomData {
-        private String code;
     }
 }

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: echotalk-config
+data:
+  FRONTEND_URL: "http://localhost:5180"
+  APP_CORS_ALLOWED_ORIGINS: "http://localhost:5180,http://localhost:5181,http://localhost:5173,http://localhost:5174"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://echotalk-postgres:5432/echotalk"
+  SPRING_DATASOURCE_USERNAME: "echotalk"
+  SPRING_DATA_REDIS_HOST: "echotalk-redis"
+  SPRING_DATA_REDIS_PORT: "6379"
+  SOCKETIO_PORT: "8081"
+  MAIL_HOST: "echotalk-mailpit"
+  MAIL_PORT: "1025"
+  MAIL_USERNAME: "no-reply@echotalk.local"
+  MAIL_SMTP_AUTH: "false"
+  MAIL_STARTTLS: "false"
+  TURN_REALM: "echotalk.local"
+  TURN_USERNAME: "echotalk"
+  TURN_EXTERNAL_IP: "127.0.0.1"

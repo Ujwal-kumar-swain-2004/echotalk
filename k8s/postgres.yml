@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echotalk-postgres
+  labels:
+    app: echotalk-postgres
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: echotalk-postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: echotalk-postgres
+  labels:
+    app: echotalk-postgres
+spec:
+  serviceName: echotalk-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echotalk-postgres
+  template:
+    metadata:
+      labels:
+        app: echotalk-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: echotalk
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: echotalk-config
+                  key: SPRING_DATASOURCE_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: echotalk-secret
+                  key: POSTGRES_PASSWORD
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - echotalk
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - echotalk
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi

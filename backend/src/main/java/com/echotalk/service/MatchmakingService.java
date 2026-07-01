@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Predicate;
 
 @Service
 @RequiredArgsConstructor
@@ -14,25 +15,17 @@ import java.util.*;
 public class MatchmakingService {
 
     private final StringRedisTemplate redisTemplate;
-    private final UserBlockService userBlockService;
 
     private static final String QUEUE_PREFIX = "matchmaking:queue:";
     private static final String USER_GENDER_KEY = "matchmaking:user:gender:";
     private static final String USER_INTERESTS_KEY = "matchmaking:user:interests:";
-    private static final String USER_PREFERENCE_KEY = "matchmaking:user:preference:";
     private static final String ACTIVE_MATCH_KEY = "matchmaking:active:";
 
-    // TTL constants to prevent stale data accumulation
     private static final Duration QUEUE_METADATA_TTL = Duration.ofMinutes(10);
     private static final Duration ACTIVE_MATCH_TTL = Duration.ofHours(2);
-
-    /**
-     * Add user to matchmaking queue with gender preference
-     */
     public void addToQueue(String userId, String gender, String preferredGender, List<String> interests) {
-        // Store user metadata with TTL
+        
         redisTemplate.opsForValue().set(USER_GENDER_KEY + userId, gender, QUEUE_METADATA_TTL);
-        redisTemplate.opsForValue().set(USER_PREFERENCE_KEY + userId, preferredGender, QUEUE_METADATA_TTL);
         if (interests != null && !interests.isEmpty()) {
             String interestsKey = USER_INTERESTS_KEY + userId;
             redisTemplate.opsForSet().add(interestsKey, interests.toArray(new String[0]));
@@ -54,60 +47,50 @@ public class MatchmakingService {
      * Returns matched userId or null
      */
     public String findMatch(String userId, String preferredGender) {
+        return findMatch(userId, preferredGender, candidateId -> true);
+    }
+
+    public String findMatch(String userId, String preferredGender, Predicate<String> isCandidateAvailable) {
         String queueKey;
 
         if (preferredGender != null && !preferredGender.equalsIgnoreCase("RANDOM")) {
             // Look in preferred gender queue first
             queueKey = QUEUE_PREFIX + preferredGender.toLowerCase();
-            String match = tryMatchFromQueue(userId, queueKey);
+            String match = tryMatchFromQueue(userId, queueKey, isCandidateAvailable);
             if (match != null) return match;
         }
 
         // Fallback to general queue
         queueKey = QUEUE_PREFIX + "all";
-        return tryMatchFromQueue(userId, queueKey);
+        return tryMatchFromQueue(userId, queueKey, isCandidateAvailable);
     }
 
-    private String tryMatchFromQueue(String userId, String queueKey) {
+    private String tryMatchFromQueue(String userId, String queueKey, Predicate<String> isCandidateAvailable) {
         Long size = redisTemplate.opsForList().size(queueKey);
         if (size == null || size == 0) return null;
 
-        String requesterGender = redisTemplate.opsForValue().get(USER_GENDER_KEY + userId);
-        Set<String> requesterInterests = getInterests(userId);
-        String bestCandidate = null;
-        int bestSharedInterests = -1;
-
-        // Select the compatible candidate with the most shared interests.
+        // Iterate queue to find a valid match (not self, not already matched)
         for (int i = 0; i < size; i++) {
             String candidateId = redisTemplate.opsForList().index(queueKey, i);
-            if (candidateId == null
-                    || candidateId.equals(userId)
-                    || isInActiveMatch(candidateId)
-                    || userBlockService.isBlockedEitherWay(userId, candidateId)) {
-                continue;
-            }
+            if (candidateId != null && !candidateId.equals(userId) && !isInActiveMatch(candidateId)) {
+                if (!isCandidateAvailable.test(candidateId)) {
+                    removeFromAllQueues(candidateId);
+                    continue;
+                }
 
-            String candidatePreference = redisTemplate.opsForValue().get(USER_PREFERENCE_KEY + candidateId);
-            if (!acceptsGender(candidatePreference, requesterGender)) {
-                continue;
-            }
+                // Remove matched user from all queues
+                removeFromAllQueues(candidateId);
+                removeFromAllQueues(userId);
 
-            Set<String> shared = new HashSet<>(requesterInterests);
-            shared.retainAll(getInterests(candidateId));
-            if (shared.size() > bestSharedInterests) {
-                bestCandidate = candidateId;
-                bestSharedInterests = shared.size();
+                // Mark both as active match
+                setActiveMatch(userId, candidateId);
+                setActiveMatch(candidateId, userId);
+
+                log.info("Match found: {} <-> {}", userId, candidateId);
+                return candidateId;
             }
         }
-
-        if (bestCandidate == null) return null;
-
-        removeFromAllQueues(bestCandidate);
-        removeFromAllQueues(userId);
-        setActiveMatch(userId, bestCandidate);
-        setActiveMatch(bestCandidate, userId);
-        log.info("Match found: {} <-> {} ({} shared interests)", userId, bestCandidate, bestSharedInterests);
-        return bestCandidate;
+        return null;
     }
 
     /**
@@ -119,19 +102,7 @@ public class MatchmakingService {
         }
         // Clean up metadata
         redisTemplate.delete(USER_GENDER_KEY + userId);
-        redisTemplate.delete(USER_PREFERENCE_KEY + userId);
         redisTemplate.delete(USER_INTERESTS_KEY + userId);
-    }
-
-    private Set<String> getInterests(String userId) {
-        Set<String> interests = redisTemplate.opsForSet().members(USER_INTERESTS_KEY + userId);
-        return interests != null ? interests : Collections.emptySet();
-    }
-
-    private boolean acceptsGender(String preference, String gender) {
-        return preference == null
-                || preference.equalsIgnoreCase("RANDOM")
-                || preference.equalsIgnoreCase(gender);
     }
 
     /**

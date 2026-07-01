@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echotalk-redis
+  labels:
+    app: echotalk-redis
+spec:
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+  selector:
+    app: echotalk-redis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: echotalk-redis-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echotalk-redis
+  labels:
+    app: echotalk-redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echotalk-redis
+  template:
+    metadata:
+      labels:
+        app: echotalk-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: echotalk-redis-data

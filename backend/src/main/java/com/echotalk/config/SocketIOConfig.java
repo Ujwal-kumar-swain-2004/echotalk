@@ -15,15 +15,11 @@ public class SocketIOConfig {
     @Value("${app.socketio.port}")
     private int port;
 
-    @Value("${app.cors.allowed-origins}")
-    private String allowedOrigins;
-
     @Bean
     public SocketIOServer socketIOServer() {
         com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
         config.setHostname(host);
         config.setPort(port);
-        config.setOrigin(String.join(",", allowedOrigins.split(",")));
         config.setTransports(Transport.WEBSOCKET, Transport.POLLING);
         config.setPingTimeout(60000);
         config.setPingInterval(25000);

@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: echotalk-turn
+  labels:
+    app: echotalk-turn
+spec:
+  type: NodePort
+  ports:
+    - name: turn-tcp
+      port: 3478
+      targetPort: 3478
+      nodePort: 30478
+      protocol: TCP
+    - name: turn-udp
+      port: 3478
+      targetPort: 3478
+      nodePort: 30478
+      protocol: UDP
+  selector:
+    app: echotalk-turn
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echotalk-turn
+  labels:
+    app: echotalk-turn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: echotalk-turn
+  template:
+    metadata:
+      labels:
+        app: echotalk-turn
+    spec:
+      containers:
+        - name: turn
+          image: coturn/coturn:4.6-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: turn-tcp
+              containerPort: 3478
+              protocol: TCP
+            - name: turn-udp
+              containerPort: 3478
+              protocol: UDP
+          env:
+            - name: TURN_REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: echotalk-config
+                  key: TURN_REALM
+            - name: TURN_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: echotalk-config
+                  key: TURN_USERNAME
+            - name: TURN_EXTERNAL_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: echotalk-config
+                  key: TURN_EXTERNAL_IP
+            - name: TURN_CREDENTIAL
+              valueFrom:
+                secretKeyRef:
+                  name: echotalk-secret
+                  key: TURN_CREDENTIAL
+          command:
+            - turnserver
+          args:
+            - --no-cli
+            - --log-file=stdout
+            - --fingerprint
+            - --lt-cred-mech
+            - --realm=$(TURN_REALM)
+            - --user=$(TURN_USERNAME):$(TURN_CREDENTIAL)
+            - --external-ip=$(TURN_EXTERNAL_IP)
