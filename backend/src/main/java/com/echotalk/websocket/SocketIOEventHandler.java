@@ -10,6 +10,7 @@ import com.echotalk.service.ChatService;
 import com.echotalk.service.MatchmakingService;
 import com.echotalk.service.ModerationService;
 import com.echotalk.service.OnlineUserService;
+import com.echotalk.security.JwtTokenProvider;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.Data;
@@ -30,6 +31,7 @@ public class SocketIOEventHandler {
     private final ChatService chatService;
     private final ModerationService moderationService;
     private final OnlineUserService onlineUserService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     // Map: sessionId -> userId
     private final Map<UUID, String> sessionUserMap = new ConcurrentHashMap<>();
@@ -65,7 +67,7 @@ public class SocketIOEventHandler {
 
     private ConnectListener onConnect() {
         return client -> {
-            String userId = getQueryParam(client, "userId");
+            String userId = resolveUserId(client);
             if (userId != null) {
                 sessionUserMap.put(client.getSessionId(), userId);
                 userSessionMap.put(userId, client.getSessionId());
@@ -310,6 +312,28 @@ public class SocketIOEventHandler {
             return params.get(key).get(0);
         }
         return null;
+    }
+
+    private String resolveUserId(SocketIOClient client) {
+        String userId = getQueryParam(client, "userId");
+        if (userId != null) {
+            return userId;
+        }
+
+        String token = getQueryParam(client, "token");
+        if (token == null) {
+            return null;
+        }
+
+        try {
+            if (!jwtTokenProvider.validateToken(token)) {
+                return null;
+            }
+            return jwtTokenProvider.getUserIdFromToken(token).toString();
+        } catch (Exception e) {
+            log.warn("Socket.IO client connected with invalid token: {}", e.getMessage());
+            return null;
+        }
     }
 
     // --- Data classes for events ---
