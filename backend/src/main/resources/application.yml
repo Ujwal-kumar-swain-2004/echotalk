@@ -70,7 +70,7 @@ app:
     host: 0.0.0.0
     port: ${SOCKETIO_PORT:8081}
   cors:
-    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5180}
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5180,https://echotalk-seven.vercel.app}
   rate-limit:
     max-requests-per-minute: 60
   translation:
