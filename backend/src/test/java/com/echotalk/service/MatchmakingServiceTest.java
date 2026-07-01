@@ -58,8 +58,8 @@ class MatchmakingServiceTest {
         matchmakingService.addToQueue(userId, gender, preferredGender, interests);
 
         verify(valueOperations).set("matchmaking:user:gender:user1", "MALE", Duration.ofMinutes(10));
-        verify(valueOperations).set("matchmaking:user:preference:user1", "FEMALE", Duration.ofMinutes(10));
         verify(setOperations).add(eq("matchmaking:user:interests:user1"), any(String[].class));
+        verify(redisTemplate).expire("matchmaking:user:interests:user1", Duration.ofMinutes(10));
         verify(listOperations).rightPush("matchmaking:queue:male", "user1");
         verify(listOperations).rightPush("matchmaking:queue:all", "user1");
     }
@@ -121,7 +121,6 @@ class MatchmakingServiceTest {
         verify(listOperations).remove("matchmaking:queue:unspecified", 0, "user1");
         verify(listOperations).remove("matchmaking:queue:all", 0, "user1");
         verify(redisTemplate).delete("matchmaking:user:gender:user1");
-        verify(redisTemplate).delete("matchmaking:user:preference:user1");
         verify(redisTemplate).delete("matchmaking:user:interests:user1");
     }
 
