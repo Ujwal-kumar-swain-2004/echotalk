@@ -98,7 +98,7 @@ export const useWebRTC = (
   useEffect(() => {
     if (!user || !token) return;
 
-    socketService.connect(token);
+    socketService.connect(token, user.id);
 
     socketService.on('onlineCount', (data: { count: number }) => {
       setOnlineCount(data.count);

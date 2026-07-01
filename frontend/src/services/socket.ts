@@ -8,9 +8,10 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL
 class SocketService {
   private socket: Socket | null = null;
   private token: string | null = null;
+  private userId: string | null = null;
 
-  connect(token: string) {
-    if (this.socket && this.token === token) {
+  connect(token: string, userId?: string) {
+    if (this.socket && this.token === token && this.userId === userId) {
       if (!this.socket.active) {
         this.socket.connect();
       }
@@ -22,9 +23,10 @@ class SocketService {
     }
 
     this.token = token;
+    this.userId = userId || null;
     this.socket = io(SOCKET_URL, {
       auth: { token },
-      query: { token },
+      query: { token, ...(userId ? { userId } : {}) },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,
@@ -51,6 +53,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this.token = null;
+      this.userId = null;
     }
   }
 
