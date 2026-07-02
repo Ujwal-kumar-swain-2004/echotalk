@@ -6,7 +6,7 @@ RUN apk add --no-cache maven && mvn clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN apk add --no-cache nginx gettext curl
+RUN apk add --no-cache nginx gettext curl busybox-extras
 COPY --from=build /app/target/*.jar app.jar
 COPY deploy ./deploy
 RUN chmod +x /app/deploy/render-entrypoint.sh

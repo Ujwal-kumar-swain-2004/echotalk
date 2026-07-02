@@ -19,7 +19,7 @@ for attempt in $(seq 1 120); do
   fi
 
   if curl -fsS "http://127.0.0.1:${SERVER_PORT}/api/public/health" >/dev/null 2>&1 &&
-     curl -fsS "http://127.0.0.1:${SOCKETIO_PORT}/socket.io/?EIO=4&transport=polling" >/dev/null 2>&1; then
+     nc -z 127.0.0.1 "${SOCKETIO_PORT}" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -44,7 +44,13 @@ nginx -g 'daemon off;' &
 nginx_pid=$!
 
 while kill -0 "$java_pid" 2>/dev/null && kill -0 "$nginx_pid" 2>/dev/null; do
-  sleep 1
+  if ! nc -z 127.0.0.1 "${SOCKETIO_PORT}" >/dev/null 2>&1; then
+    echo "Socket.IO port is no longer reachable" >&2
+    kill -TERM "$java_pid" 2>/dev/null || true
+    kill -TERM "$nginx_pid" 2>/dev/null || true
+    exit 1
+  fi
+  sleep 5
 done
 
 if ! kill -0 "$java_pid" 2>/dev/null; then
