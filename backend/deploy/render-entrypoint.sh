@@ -3,6 +3,7 @@ set -eu
 
 : "${PORT:=10000}"
 : "${SERVER_PORT:=8080}"
+: "${SOCKETIO_PORT:=8081}"
 
 envsubst '${PORT}' \
   < /app/deploy/nginx.conf.template \
@@ -17,7 +18,8 @@ for attempt in $(seq 1 120); do
     wait "$java_pid" || exit $?
   fi
 
-  if curl -fsS "http://127.0.0.1:${SERVER_PORT}/api/public/health" >/dev/null 2>&1; then
+  if curl -fsS "http://127.0.0.1:${SERVER_PORT}/api/public/health" >/dev/null 2>&1 &&
+     curl -fsS "http://127.0.0.1:${SOCKETIO_PORT}/socket.io/?EIO=4&transport=polling" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -26,7 +28,7 @@ for attempt in $(seq 1 120); do
 done
 
 if [ "$ready" != "1" ]; then
-  echo "Spring backend did not become ready in time" >&2
+  echo "Spring backend or Socket.IO server did not become ready in time" >&2
   kill -TERM "$java_pid" 2>/dev/null || true
   exit 1
 fi
