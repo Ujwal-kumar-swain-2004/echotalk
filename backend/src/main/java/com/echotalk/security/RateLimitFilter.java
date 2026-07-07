@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -48,7 +49,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         // Skip rate limiting for static/swagger endpoints if needed, but rate limiting all /api endpoints is good practice.
         String path = request.getRequestURI();
-        if (!path.startsWith("/api")) {
+        if (HttpMethod.OPTIONS.matches(request.getMethod()) || !path.startsWith("/api")) {
             filterChain.doFilter(request, response);
             return;
         }

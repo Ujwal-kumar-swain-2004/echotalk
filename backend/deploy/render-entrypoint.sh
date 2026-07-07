@@ -5,33 +5,15 @@ set -eu
 : "${SERVER_PORT:=8080}"
 : "${SOCKETIO_PORT:=8081}"
 
-envsubst '${PORT}' \
+envsubst '${PORT} ${SERVER_PORT} ${SOCKETIO_PORT}' \
   < /app/deploy/nginx.conf.template \
   > /etc/nginx/nginx.conf
 
 java -jar /app/app.jar &
 java_pid=$!
 
-ready=0
-for attempt in $(seq 1 120); do
-  if ! kill -0 "$java_pid" 2>/dev/null; then
-    wait "$java_pid" || exit $?
-  fi
-
-  if curl -fsS "http://127.0.0.1:${SERVER_PORT}/api/public/health" >/dev/null 2>&1 &&
-     nc -z 127.0.0.1 "${SOCKETIO_PORT}" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-
-  sleep 1
-done
-
-if [ "$ready" != "1" ]; then
-  echo "Spring backend or Socket.IO server did not become ready in time" >&2
-  kill -TERM "$java_pid" 2>/dev/null || true
-  exit 1
-fi
+nginx -g 'daemon off;' &
+nginx_pid=$!
 
 shutdown() {
   kill -TERM "$java_pid" 2>/dev/null || true
@@ -40,16 +22,7 @@ shutdown() {
 
 trap shutdown INT TERM EXIT
 
-nginx -g 'daemon off;' &
-nginx_pid=$!
-
 while kill -0 "$java_pid" 2>/dev/null && kill -0 "$nginx_pid" 2>/dev/null; do
-  if ! nc -z 127.0.0.1 "${SOCKETIO_PORT}" >/dev/null 2>&1; then
-    echo "Socket.IO port is no longer reachable" >&2
-    kill -TERM "$java_pid" 2>/dev/null || true
-    kill -TERM "$nginx_pid" 2>/dev/null || true
-    exit 1
-  fi
   sleep 5
 done
 
